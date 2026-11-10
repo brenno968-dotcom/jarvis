@@ -1,0 +1,54 @@
+:root {
+  --fundo: #f4f1ea;
+  --tinta: #1d1b17;
+  --suave: #6b665c;
+  --linha: #d9d3c5;
+  --verde: #2f6b3f;
+  --amarelo: #a8740b;
+  --vermelho: #a3261b;
+  --cartao: #fffdf8;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #15140f;
+    --tinta: #ece7da;
+    --suave: #a39d8f;
+    --linha: #34312a;
+    --verde: #6fbf83;
+    --amarelo: #e0a93a;
+    --vermelho: #ef6b5e;
+    --cartao: #1d1b16;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 15px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+h1 { font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+h2 { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--suave); margin: 32px 0 10px; }
+.topo { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--tinta); padding-bottom: 12px; }
+.cartao { background: var(--cartao); border: 1px solid var(--linha); padding: 16px; }
+.emergencia { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.estado { font-weight: 700; }
+.estado.parado { color: var(--vermelho); }
+.estado.ativo { color: var(--verde); }
+button { font: inherit; padding: 8px 14px; border: 2px solid var(--tinta); background: transparent; color: var(--tinta); cursor: pointer; }
+button.perigo { border-color: var(--vermelho); color: var(--vermelho); font-weight: 700; }
+button:hover { background: var(--tinta); color: var(--fundo); }
+button.perigo:hover { background: var(--vermelho); color: #fff; }
+input { font: inherit; padding: 8px; border: 1px solid var(--linha); background: var(--cartao); color: var(--tinta); }
+.tabela { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+th { font-size: 12px; color: var(--suave); text-transform: uppercase; letter-spacing: 0.06em; }
+.nivel-verde { color: var(--verde); }
+.nivel-amarelo { color: var(--amarelo); }
+.nivel-vermelho { color: var(--vermelho); }
+.vazio { color: var(--suave); }
+form.linha { display: flex; gap: 8px; flex-wrap: wrap; }

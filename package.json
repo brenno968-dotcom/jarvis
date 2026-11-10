@@ -1,0 +1,31 @@
+{
+  "name": "jarvis",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck -w @jarvis/painel",
+    "test": "vitest run",
+    "worker": "npm run start -w @jarvis/worker",
+    "migrar": "tsx scripts/migrar.ts",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "playwright": "^1.65.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

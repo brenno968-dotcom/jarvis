@@ -1,0 +1,28 @@
+# Trecho do Jarvis para o docker-compose do VPS (seção 23 de docs/JARVIS.md).
+# WhatsApp e Vigia continuam nos containers deles; cada um com limite de memória próprio.
+services:
+  jarvis-worker:
+    image: jarvis-worker:latest
+    container_name: jarvis-worker
+    restart: unless-stopped
+    user: "1001:1001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 768m
+    cpus: "0.5"
+    environment:
+      - BWS_ACCESS_TOKEN_FILE=/run/secrets/bws_token
+      - JARVIS_WORKER_ID=vps-hostinger-1
+      # DATABASE_URL vem da Dory (bws run). Não colocar valor aqui.
+    secrets:
+      - bws_token
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  bws_token:
+    file: /opt/jarvis/secrets/bws_token   # permissão 600, dono 1001

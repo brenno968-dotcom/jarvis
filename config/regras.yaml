@@ -1,0 +1,77 @@
+versao: 1
+
+semaforo:
+  verde:
+    - criar_variavel_ambiente_teste
+    - redeploy_preview
+    - ler_logs
+    - testar_chave
+    - consultar_banco_leitura
+    - verificar_nexus
+    - teste_eco
+    - teste_usar_segredo
+    - teste_efeito
+    - consultar_estado
+    - produzir_produto
+    - produzir_pagina_venda
+    - produzir_anuncios
+    - ler_metricas_campanha
+    - pausar_campanha
+    - cotar_fretes
+  amarelo:
+    - redeploy_producao
+    - criar_segredo
+    - aplicar_variavel_producao
+    - reaplicar_segredo
+    - ajustar_campanha_dentro_orcamento
+    - abrir_sessao_nexus
+  vermelho:
+    - criar_conta
+    - apagar_qualquer_coisa
+    - alterar_banco_producao
+    - qualquer_pagamento
+    - comprar_estoque
+    - aumentar_orcamento
+    - primeiro_contato_cliente
+    - publicar_produto
+    - publicar_campanha
+    - revogar_chave
+    - teste_vermelho
+
+orcamento_padrao:
+  teto_por_compra_brl: 200
+  teto_mensal_por_negocio_brl: 500
+  compra_estoque_sempre_pede_ok: true
+
+aprovacao:
+  canal: whatsapp
+  # Seção 22: além do WhatsApp, estas pedem confirmação no painel com login.
+  confirmacao_dupla:
+    - apagar_qualquer_coisa
+    - alterar_banco_producao
+    - revogar_chave
+    - comprar_estoque
+    - aumentar_orcamento
+  numeros_autorizados: ["<numero_do_breno>"]
+  expira_em_minutos: 60
+  lembrete_apos_minutos: 15
+
+gmail:
+  intervalo_verificacao_segundos: 4
+  tempo_maximo_espera_minutos: 5
+  alias_cadastros: "brenno.968+cadastros@gmail.com"
+
+navegador:
+  provedor: browserbase
+  resolver_captcha_automatico: false   # NUNCA mudar para true
+  tempo_maximo_espera_humano_minutos: 30
+
+tentativas:
+  max_padrao: 5
+  espera_inicial_segundos: 10
+  multiplicador: 2
+  espera_maxima_segundos: 900
+
+emergencia:
+  comando_whatsapp: "PARA TUDO"
+  revogar_tokens: [jarvis, carteiro, marcapasso]
