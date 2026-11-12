@@ -108,7 +108,14 @@ export function lerRegrasDeTexto(texto: string): Regras {
 }
 
 export function carregarRegras(caminho = process.env.JARVIS_REGRAS ?? 'config/regras.yaml'): Regras {
-  return lerRegrasDeTexto(readFileSync(caminho, 'utf8'));
+  return comNumerosDoAmbiente(lerRegrasDeTexto(readFileSync(caminho, 'utf8')));
+}
+
+/** O celular do Breno não fica no repositório: JARVIS_NUMEROS_AUTORIZADOS (separados por vírgula) substitui
+    aprovacao.numeros_autorizados do regras.yaml. Sem a variável, vale o arquivo. */
+export function comNumerosDoAmbiente(regras: Regras, valor = process.env.JARVIS_NUMEROS_AUTORIZADOS): Regras {
+  const numeros = (valor ?? '').split(',').map((n) => n.replace(/\D/g, '')).filter((n) => n.length >= 10);
+  return numeros.length ? { ...regras, aprovacao: { ...regras.aprovacao, numeros_autorizados: numeros } } : regras;
 }
 
 /** Seção 6: ação que não aparece em nenhuma cor é vermelha. */
