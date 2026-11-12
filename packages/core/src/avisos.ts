@@ -136,9 +136,24 @@ export async function criarLembretesDeAprovacao(banco: Consultavel, lembreteApos
 }
 
 /** Notificador HTTP para o Nexus, com assinatura (contrato em docs/INTEGRACAO-NEXUS.md). */
-export function notificadorNexus(url: string, segredo: string, fetchImpl: typeof fetch = fetch): Notificador {
+/** Para quem o Nexus pode mandar: SÓ os números autorizados do Jarvis e os e-mails de aviso (vai assinado no corpo).
+ *  O Nexus não manda para mais ninguém (antes ele usava os superadmins dele: erro corrigido em 12/11). */
+export interface DestinoAvisos {
+  numeros: string[];
+  emails: string[];
+}
+
+export function destinoDosAvisos(numerosAutorizados: string[], emails = process.env.JARVIS_AVISO_EMAILS): DestinoAvisos {
+  return {
+    numeros: [...new Set(numerosAutorizados.map((n) => n.replace(/\D/g, '')).filter((n) => n.length >= 10 && n.length <= 15))],
+    emails: [...new Set((emails ?? '').split(',').map((e) => e.trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)))],
+  };
+}
+
+export function notificadorNexus(url: string, segredo: string, destino: DestinoAvisos, fetchImpl: typeof fetch = fetch): Notificador {
   return async (m) => {
-    const corpo = JSON.stringify(m);
+    if (!destino.numeros.length && !destino.emails.length) throw new Error('sem destinatário autorizado (JARVIS_NUMEROS_AUTORIZADOS / JARVIS_AVISO_EMAILS)');
+    const corpo = JSON.stringify({ ...m, para: destino });
     const ts = Math.floor(Date.now() / 1000);
     const resp = await fetchImpl(url, {
       method: 'POST',

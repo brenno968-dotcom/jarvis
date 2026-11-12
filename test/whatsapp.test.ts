@@ -8,6 +8,7 @@ import {
   lerEmergencia,
   marcarWebhookVisto,
   notificadorNexus,
+  destinoDosAvisos,
   processarEventoNexus,
   verificarAssinatura,
   type Banco,
@@ -66,8 +67,19 @@ describe('assinatura Jarvis ↔ Nexus', () => {
       recebido = { corpo: String(init.body), ts: h['x-jarvis-timestamp']!, sig: h['x-jarvis-assinatura']! };
       return new Response('{}', { status: 200 });
     }) as unknown as typeof fetch;
-    await notificadorNexus('https://nexus.exemplo/avisos', SEGREDO_WEBHOOK, fakeFetch)({ aviso_id: 'x', tipo: 'texto', texto: 'oi' });
+    const destino = destinoDosAvisos(['+55 (99) 99123-4567', '<numero_do_breno>'], 'Breno@Exemplo.com, nao-e-email');
+    expect(destino).toEqual({ numeros: ['5599991234567'], emails: ['breno@exemplo.com'] });
+    await notificadorNexus('https://nexus.exemplo/avisos', SEGREDO_WEBHOOK, destino, fakeFetch)({ aviso_id: 'x', tipo: 'texto', texto: 'oi' });
     expect(verificarAssinatura(SEGREDO_WEBHOOK, recebido!.ts, recebido!.corpo, recebido!.sig)).toBe('ok');
+    // o destinatário vai dentro do corpo assinado: o Nexus só manda para ele
+    expect(JSON.parse(recebido!.corpo).para).toEqual(destino);
+  });
+
+  it('sem número autorizado nem e-mail: não manda nada (falha fechado)', async () => {
+    const fakeFetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    await expect(
+      notificadorNexus('https://nexus.exemplo/avisos', SEGREDO_WEBHOOK, destinoDosAvisos(['<numero_do_breno>'], ''), fakeFetch)({ aviso_id: 'x', tipo: 'texto', texto: 'oi' }),
+    ).rejects.toThrow(/sem destinatário/);
   });
 });
 

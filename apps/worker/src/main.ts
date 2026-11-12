@@ -4,6 +4,7 @@ import {
   criarBanco,
   log,
   notificadorNexus,
+  destinoDosAvisos,
   ProvedorAmbiente,
   CofreBitwarden,
   criarCerebroAnthropic,
@@ -56,7 +57,7 @@ async function principal(): Promise<void> {
   const segredoWebhook = await opcional('JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO');
   const segredoAprovacao = await opcional('JARVIS_CORE_APROVACAO_SEGREDO');
   let notificar: Notificador | undefined;
-  if (urlAvisos && segredoWebhook) notificar = notificadorNexus(urlAvisos, segredoWebhook);
+  if (urlAvisos && segredoWebhook) notificar = notificadorNexus(urlAvisos, segredoWebhook, destinoDosAvisos(regras.aprovacao.numeros_autorizados));
   else log('aviso', 'avisos ao Breno desligados (falta JARVIS_CORE_NEXUS_AVISOS_URL ou o segredo do webhook)');
 
   // Dory: precisa do token da conta de máquina (o mesmo do bws run) e do id da organização.
