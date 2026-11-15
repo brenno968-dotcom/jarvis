@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { emailAutorizado, modoLogin } from './lib/modo';
 import { COOKIE, sessaoValida } from './lib/sessao';
 
-const LIVRES = ['/entrar', '/auth/callback', '/api/aprovacoes/whatsapp', '/api/mcp', '/api/pagamentos', '/api/oauth', '/.well-known', '/api/saude', '/api/gmail'];
+const LIVRES = ['/entrar', '/auth/callback', '/api/aprovacoes/whatsapp', '/api/tarefas/nexus', '/api/mcp', '/api/pagamentos', '/api/oauth', '/.well-known', '/api/saude', '/api/gmail'];
 
 function paraEntrar(req: NextRequest) {
   const u = new URL('/entrar', req.url);
