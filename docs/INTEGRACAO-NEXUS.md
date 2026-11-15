@@ -58,6 +58,17 @@ São duas chamadas HTTP, ambas assinadas com o mesmo segredo compartilhado.
 2. No webhook da Meta do Nexus: reconhecer toques em botões `aprovar:`/`recusar:` e o texto "PARA TUDO" vindos do número do Breno, e repassar ao Jarvis.
 3. Configurar o segredo compartilhado nos dois lados (pela Dory).
 
+## 4. Nexus → Jarvis: pedido do Pulso (item 177, 15/11/2026)
+
+- Quando o "Corrigir" do Pulso acha um problema que o Nexus não corrige sozinho, o Nexus faz `POST` em
+  `https://<painel-do-jarvis>/api/tarefas/nexus`, assinado como as outras chamadas.
+- Corpo: `{ "componente": "whatsapp", "escopo": "drive", "classe": "breno" | "desconhecida", "texto": "...", "link": "/conexoes" }`
+  (`link` é só o caminho no Nexus; o Jarvis monta o endereço com `JARVIS_NEXUS_URL`, padrão `https://nexus-hub.api.br`).
+- O Jarvis registra na auditoria (`pedido_nexus`) e avisa o Breno pelo WhatsApp (`pedido_humano`, com o link).
+  O mesmo serviço + classe dentro de 6 horas vira um aviso só.
+- Resposta: `{ "ok": true, "resultado": { "registrado": true, "avisado": true|false } }`; corpo incompleto = 400; assinatura errada = 401.
+- Resolver sozinho (conta, número ou chave nova) fica para os adaptadores da Fase 1: senha, CAPTCHA e código continuam sempre com o Breno.
+
 ## 3. Vendas (Fase 6) — o que o Nexus precisa saber
 
 O atendimento e a venda continuam nos módulos do Nexus. O lado do Jarvis já tem:

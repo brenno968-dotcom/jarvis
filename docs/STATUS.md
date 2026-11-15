@@ -3,6 +3,15 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 0000. Atualização de 15/11/2026: pedido do Pulso do Nexus (item 177 do Quadro do Nexus)
+
+- Nova rota `POST /api/tarefas/nexus` (painel), assinada: o Pulso do Nexus manda o problema que não corrige sozinho;
+  o Jarvis registra (`auditoria.acao = 'pedido_nexus'`) e avisa o Breno (`pedido_humano` com link), um aviso por serviço a cada 6 h.
+  Código: `packages/core/src/pedidos-nexus.ts`; teste: `test/pedidos-nexus.test.ts`; contrato: `docs/INTEGRACAO-NEXUS.md` seção 4.
+- Não precisa mexer no worker: ele já manda os avisos. Não precisa de SQL (usa auditoria e avisos, com os grants do painel).
+- Worker no VPS conferido em 15/11 02h50: `vps-hostinger-1` ativo, sinal em dia. Migração 0009 já está no GitHub.
+- Falta da Fase 0 real: Gmail OAuth, chave da IA do Jarvis, conta de máquina `jarvis-core` no Bitwarden (precisam do login do Breno).
+
 ## 000. Atualização de 10/11/2026 (quarta sessão): programação concluída
 
 **Situação:** toda a parte de programação que dá para fazer sem as plataformas reais está feita. **109 testes passando**, lint e tipagem limpos, painel compilando, worker subindo de verdade com todas as rotinas. O que sobra é configuração (do Breno), integração e validação no real (próxima IA), e a Fase 8 (receitas em telas reais).
