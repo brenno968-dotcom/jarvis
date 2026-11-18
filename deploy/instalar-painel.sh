@@ -92,10 +92,10 @@ docker exec "$CADDY" caddy reload --config /etc/caddy/Caddyfile >/dev/null
 
 echo "== 6. Conferência"
 for i in $(seq 1 30); do
-  if docker exec "$CADDY" wget -qO- http://jarvis-painel:3100/api/saude >/dev/null 2>&1; then echo "   painel respondendo (rede interna)"; break; fi
+  if docker exec "$CADDY" wget -qO- http://jarvis-painel:3100/entrar >/dev/null 2>&1; then echo "   painel respondendo (rede interna)"; break; fi
   sleep 2; [ "$i" = 30 ] && { docker logs --tail 30 jarvis-painel; erro "painel não respondeu em 60 s"; }
 done
-if curl -fsS -o /dev/null --max-time 20 "https://$DOMINIO/api/saude"; then echo "   https://$DOMINIO OK"
+if curl -fsS -o /dev/null --max-time 20 "https://$DOMINIO/entrar"; then echo "   https://$DOMINIO OK"
 else echo "   AVISO: https://$DOMINIO ainda não responde (DNS propagando? o Caddy pega o certificado sozinho quando o DNS chegar)"; fi
 docker stats --no-stream --format '   memória: {{.MemUsage}}' jarvis-painel
 echo "PRONTO."
