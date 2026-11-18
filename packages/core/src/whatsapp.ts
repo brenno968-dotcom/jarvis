@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Banco } from './banco.ts';
 import { emTransacao } from './banco.ts';
@@ -77,7 +78,7 @@ export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: 
     await registrarAuditoria(banco, { quem: 'nexus', acao: 'teste_aviso_pedido' });
     if (!deps.avisarAgora) return { tipo: 'teste', enviado: false, numeros: [], emails: [], erro: 'o painel do Jarvis não tem JARVIS_CORE_NEXUS_AVISOS_URL configurado' };
     try {
-      const para = await deps.avisarAgora({ aviso_id: `teste-${Date.now()}`, tipo: 'texto', texto: 'teste ok — o Jarvis está falando com você pelo Nexus.' });
+      const para = await deps.avisarAgora({ aviso_id: randomUUID() /* o Nexus só aceita [0-9a-f-] no aviso_id */, tipo: 'texto', texto: 'teste ok — o Jarvis está falando com você pelo Nexus.' });
       return { tipo: 'teste', enviado: true, ...para };
     } catch (err) {
       return { tipo: 'teste', enviado: false, numeros: [], emails: [], erro: err instanceof Error ? err.message : 'erro ao avisar' };
