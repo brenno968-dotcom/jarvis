@@ -7,9 +7,10 @@
 
 - A Vercel do Breno está bloqueada. O painel passa a rodar no VPS da Hostinger, em container (`jarvis-painel`), atrás do Caddy
   do WhatsApp, no endereço **https://jarvis.nexus-hub.api.br** (DNS no Registro.br, registro A para 179.197.227.23).
-- Arquivos: `deploy/painel.Dockerfile`, `deploy/painel-entrypoint.sh`, `deploy/instalar-painel.sh` (instala e atualiza; roda
-  como root no VPS). Segredos: Dory (`bws run`, mesmo token do worker), inclusive no build (`--secret`), nada em arquivo.
-  O painel usa `JARVIS_CORE_DB_PAINEL_URL` como `DATABASE_URL` quando existir.
+- Arquivos: `deploy/painel.Dockerfile` e `deploy/instalar-painel.sh` (instala e atualiza; roda como root no VPS).
+  O VPS **não usa a Dory** para o Jarvis: o worker lê `/opt/jarvis/worker.env` (600). O painel segue o mesmo padrão:
+  `/opt/jarvis/painel.env` (600), montado na 1ª vez com as chaves do worker.env + segredo do cookie e senha nova do papel
+  `jarvis_painel_login` gerados no VPS (o banco recebe só o verificador SCRAM). Só valores públicos entram no build.
 - Depois de subir: trocar `JARVIS_PAINEL_URL` no Nexus (Dory nexus-producao + `/opt/nexus/env*`) e no worker; acrescentar o
   endereço no login do Supabase (Auth › URL Configuration); conferir Gmail push, webhooks de pagamento e o conector MCP.
   Plano completo: `claude/plano-jarvis-painel-vps.md` (Projeto NEXUS no claude.ai).
