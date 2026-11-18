@@ -36,3 +36,4 @@ export * from './kit.ts';
 export * from './oauth.ts';
 export * from './saude.ts';
 export * from './pedidos-nexus.ts';
+export * from './conversa.ts';

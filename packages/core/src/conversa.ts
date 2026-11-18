@@ -1,0 +1,78 @@
+// Conversa do Breno com o Jarvis pelo WhatsApp (item 330 do Quadro do Nexus).
+// O Nexus só repassa quando: (a) a mensagem veio do número autorizado do Breno e começa com "Jarvis…", ou
+// (b) o Breno abriu uma sessão com a senha ("Jarvis, aqui é o Breno" + senha) naquele número (30 min).
+// A conversa só RESPONDE: nada aqui executa ação. Toda ação continua indo para a fila e, se for amarela/vermelha,
+// para o "Aprovar" no número autorizado (semáforo do regras.yaml). O texto da conversa nunca vai para a auditoria.
+import type { Banco } from './banco.ts';
+import { numeroAutorizado } from './aprovacoes.ts';
+import { registrarAuditoria } from './auditoria.ts';
+import type { Cerebro } from './maestro/cerebro.ts';
+import type { Regras } from './regras.ts';
+import { saudeDoJarvis } from './saude.ts';
+
+export type ViaConversa = 'numero' | 'senha';
+
+/** Tira o "Jarvis," do começo (o Breno chama pelo nome). */
+export function semChamado(texto: string): string {
+  return texto.replace(/^\s*jarvis\b[\s,.:;!?-]*/i, '').trim();
+}
+
+export const AJUDA_CONVERSA = [
+  'Comandos rápidos (comece com "Jarvis"):',
+  '• Jarvis status — como estou agora (fila, aprovações, problemas)',
+  '• Jarvis ajuda — esta lista',
+  '• PARA TUDO — para tudo na hora',
+  'Qualquer outra pergunta eu respondo com a IA (quando a chave da IA estiver ligada).',
+  'Ação que gasta dinheiro, mexe em senha ou cria/apaga conta: eu peço o seu "Aprovar" no número autorizado.',
+].join('\n');
+
+export function instrucoesConversa(via: ViaConversa): string {
+  return [
+    'Você é o Jarvis, o assistente do Breno (dono da Prime Consultoria e do sistema Nexus). Responda em português do Brasil,',
+    'curto (até 6 linhas), direto e sem sigla sem explicar. Você está no WhatsApp.',
+    'Você NÃO executa nenhuma ação nesta conversa: só responde, explica e sugere. Se o Breno pedir uma ação, diga que ela',
+    'vai para a fila e que ações sensíveis (pagamento, senha, criar ou apagar conta) pedem o "Aprovar" no número autorizado.',
+    'Nunca peça, mostre ou invente senhas, tokens ou dados pessoais. Nunca invente números ou resultados: se não sabe, diga.',
+    via === 'senha'
+      ? 'Atenção: esta conversa veio de um número que NÃO é o autorizado (sessão aberta com a senha). Não fale de dado sensível.'
+      : 'Esta conversa veio do número autorizado do Breno.',
+  ].join('\n');
+}
+
+async function resumoStatus(banco: Banco): Promise<string> {
+  const s = await saudeDoJarvis(banco);
+  const fila = Object.entries(s.fila).map(([k, n]) => `${k}: ${n}`).join(', ') || 'vazia';
+  const linhas = [
+    s.emergencia ? '⛔ Estou PARADO (PARA TUDO ligado).' : s.ok ? '✅ Tudo certo comigo.' : '⚠️ Tenho problemas:',
+    ...s.problemas.slice(0, 5).map((p) => `• ${p}`),
+    `Tarefas: ${fila}.`,
+    `Aprovações esperando há mais de 1 h: ${s.aprovacoes_pendentes_mais_1h}.`,
+  ];
+  return linhas.join('\n');
+}
+
+export type ResultadoConversa = { resposta: string } | { ignorado: string };
+
+export async function responderConversa(
+  banco: Banco,
+  regras: Regras,
+  e: { numero: string; texto: string; via: ViaConversa },
+  cerebro: Cerebro | null,
+): Promise<ResultadoConversa> {
+  // pelo número: só o autorizado. Pela senha: o Nexus conferiu a senha e assinou o pedido (HMAC).
+  if (e.via === 'numero' && !numeroAutorizado(regras, e.numero)) {
+    await registrarAuditoria(banco, { quem: 'whatsapp', acao: 'conversa_numero_nao_autorizado' });
+    return { ignorado: 'número não autorizado' };
+  }
+  const pergunta = semChamado(e.texto);
+  await registrarAuditoria(banco, { quem: `whatsapp:${e.via}`, acao: 'conversa_whatsapp', detalhes: { tamanho: pergunta.length } });
+  if (!pergunta || /^(ajuda|help|menu|\?)$/i.test(pergunta)) return { resposta: `Oi, Breno.\n${AJUDA_CONVERSA}` };
+  if (/^(status|situa[cç][aã]o|como (vai|est[aá]s?))\??$/i.test(pergunta)) return { resposta: await resumoStatus(banco) };
+  if (!cerebro) return { resposta: 'Recebi. A minha IA ainda não está ligada (falta a chave da IA do Jarvis), então por enquanto só entendo "Jarvis status" e "Jarvis ajuda".' };
+  try {
+    const r = (await cerebro.pensar(instrucoesConversa(e.via), [{ role: 'user', content: pergunta.slice(0, 2000) }])).trim();
+    return { resposta: r.slice(0, 1500) || 'Não consegui pensar numa resposta agora. Tente de novo.' };
+  } catch {
+    return { resposta: 'A IA não respondeu agora. Tente de novo em alguns minutos.' };
+  }
+}
