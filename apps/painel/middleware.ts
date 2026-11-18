@@ -4,11 +4,12 @@ type CookieParaGravar = { name: string; value: string; options: CookieOptions };
 import { NextResponse, type NextRequest } from 'next/server';
 import { emailAutorizado, modoLogin } from './lib/modo';
 import { COOKIE, sessaoValida } from './lib/sessao';
+import { baseUrl } from './lib/base';
 
 const LIVRES = ['/entrar', '/auth/callback', '/api/aprovacoes/whatsapp', '/api/tarefas/nexus', '/api/mcp', '/api/pagamentos', '/api/oauth', '/.well-known', '/api/saude', '/api/gmail'];
 
 function paraEntrar(req: NextRequest) {
-  const u = new URL('/entrar', req.url);
+  const u = new URL('/entrar', baseUrl(req));
   u.searchParams.set('voltar', req.nextUrl.pathname + req.nextUrl.search);
   return NextResponse.redirect(u);
 }
