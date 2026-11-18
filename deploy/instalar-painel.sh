@@ -26,6 +26,24 @@ echo "   versão $(git -C "$SRC" rev-parse --short HEAD)"
 echo "== 2. Imagem (segredos da Dory só durante o build)"
 DOCKER_BUILDKIT=1 docker build -q -f "$SRC/deploy/painel.Dockerfile" -t jarvis-painel:latest --secret id=bws_token,src="$TOKEN" "$SRC" >/dev/null
 
+echo "== 2b. Variáveis na Dory (só os NOMES que faltam; nenhum valor aparece)"
+docker run --rm --entrypoint sh -v "$TOKEN":/run/secrets/bws_token:ro -e HOME=/tmp jarvis-painel:latest -c '
+  BWS_ACCESS_TOKEN="$(cat /run/secrets/bws_token)" bws secret list -o json | node -e "
+    const tem = new Set(JSON.parse(require(\"fs\").readFileSync(0, \"utf8\")).map((s) => s.key));
+    const precisa = [\"NEXT_PUBLIC_SUPABASE_URL\", \"NEXT_PUBLIC_SUPABASE_ANON_KEY\", \"JARVIS_PAINEL_SEGREDO_COOKIE\",
+      \"JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO\", \"JARVIS_CORE_NEXUS_AVISOS_URL\", \"JARVIS_CORE_ANTHROPIC_API_KEY\",
+      \"JARVIS_NUMEROS_AUTORIZADOS\", \"JARVIS_CORE_APROVACAO_SEGREDO\"];
+    const banco = tem.has(\"JARVIS_CORE_DB_PAINEL_URL\") || tem.has(\"DATABASE_URL\");
+    const login = tem.has(\"JARVIS_PAINEL_EMAILS\") || tem.has(\"JARVIS_PAINEL_SENHA\");
+    const faltam = precisa.filter((n) => !tem.has(n));
+    if (!banco) faltam.push(\"JARVIS_CORE_DB_PAINEL_URL (ou DATABASE_URL)\");
+    if (!login) faltam.push(\"JARVIS_PAINEL_EMAILS (ou JARVIS_PAINEL_SENHA)\");
+    console.log(faltam.length ? \"   FALTAM na Dory: \" + faltam.join(\", \") : \"   Dory completa\");
+    for (const o of [\"JARVIS_MODELO_IA_CONVERSA\", \"JARVIS_CORE_MCP_TOKEN\", \"JARVIS_CORE_PULSO_TOKEN\", \"JARVIS_CORE_GMAIL_PUSH_TOKEN\", \"JARVIS_AVISO_EMAILS\", \"JARVIS_PAINEL_AUTH\"])
+      if (!tem.has(o)) console.log(\"   (opcional, não tem: \" + o + \")\");
+    if (tem.has(\"JARVIS_PAINEL_URL\")) console.log(\"   AVISO: a Dory tem JARVIS_PAINEL_URL: troque para https://'"$DOMINIO"' (o worker lê de lá)\");
+  "' || echo "   não consegui ler a lista da Dory (seguindo)"
+
 echo "== 3. Container na rede do Caddy"
 REDE=$(docker inspect "$CADDY" -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
 [ -n "$REDE" ] || erro "não achei a rede do Caddy"
