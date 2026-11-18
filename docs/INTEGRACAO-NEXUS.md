@@ -52,6 +52,26 @@ São duas chamadas HTTP, ambas assinadas com o mesmo segredo compartilhado.
 - Só repassar ao Jarvis: toques em botões cujo id começa com `aprovar:`/`recusar:` e mensagens de texto vindas do número do Breno (o Jarvis confere de novo).
 - Resposta do Jarvis: `{ "ok": true, "resultado": ... }`. Webhook repetido (mesma assinatura) é ignorado.
 
+### 2.1 Conversa do Breno e teste de aviso (item 330, 17/11/2026)
+
+```json
+{ "tipo": "conversa", "numero": "5562999990000", "texto": "Jarvis, status", "via": "numero" }
+```
+
+- `via: "numero"`: veio do número autorizado (o Jarvis confere de novo). `via: "senha"`: o Breno abriu no Nexus uma sessão
+  de 30 min com "Jarvis, aqui é o Breno" + senha, de outro número; o Nexus conferiu a senha e assina o pedido.
+- Resposta: `resultado = { "tipo": "conversa", "resposta": "<texto>" }`; o Nexus manda a resposta na mesma conversa.
+- A conversa só responde (IA Haiku por padrão, `JARVIS_MODELO_IA_CONVERSA`); ação continua indo pela fila e pelo "Aprovar".
+  Sem `JARVIS_CORE_ANTHROPIC_API_KEY` no painel, entende só "Jarvis status" e "Jarvis ajuda". O texto não vai para a auditoria.
+
+```json
+{ "tipo": "teste" }
+```
+
+- Botão "Pedir teste ao Jarvis" no Nexus: o painel manda o aviso "teste ok" na hora (precisa de `JARVIS_CORE_NEXUS_AVISOS_URL`
+  e `JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO` no painel) e responde `{ "tipo": "teste", "enviado": true, "numeros": [...], "emails": [...] }`,
+  ou `enviado: false` com o `erro`. O Nexus mostra os números completos (tela só do administrador do sistema).
+
 ## O que falta no Nexus
 
 1. Endpoint que recebe o aviso do Jarvis e manda ao Breno (texto + botões de resposta).

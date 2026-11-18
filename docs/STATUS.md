@@ -3,6 +3,15 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 00000. Atualização de 17/11/2026: conversa pelo WhatsApp e teste de aviso (item 330 do Quadro do Nexus)
+
+- `POST /api/aprovacoes/whatsapp` aceita `tipo: "conversa"` (o Breno fala com o Jarvis começando com "Jarvis…") e `tipo: "teste"`
+  (botão "Pedir teste ao Jarvis" no Nexus). Contrato: `docs/INTEGRACAO-NEXUS.md` seção 2.1. Código: `packages/core/src/conversa.ts`.
+- A conversa só responde; nenhuma ação sai dela. Sem a chave da IA no painel: só "Jarvis status" e "Jarvis ajuda".
+- Variáveis novas no painel (opcionais): `JARVIS_CORE_ANTHROPIC_API_KEY`, `JARVIS_MODELO_IA_CONVERSA` (padrão Haiku),
+  `JARVIS_CORE_NEXUS_AVISOS_URL` e `JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO` (as duas últimas para o teste).
+- Teste: `test/conversa.test.ts` (7). Sem migration.
+
 ## 0000. Atualização de 15/11/2026: pedido do Pulso do Nexus (item 177 do Quadro do Nexus)
 
 - Nova rota `POST /api/tarefas/nexus` (painel), assinada: o Pulso do Nexus manda o problema que não corrige sozinho;

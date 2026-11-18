@@ -1,11 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { marcarWebhookVisto, processarEventoNexus, verificarAssinatura } from '@jarvis/core';
+import {
+  criarCerebroAnthropic,
+  destinoDosAvisos,
+  marcarWebhookVisto,
+  notificadorNexus,
+  processarEventoNexus,
+  verificarAssinatura,
+  type DepsEventoNexus,
+} from '@jarvis/core';
 import { obterBanco, obterRegras } from '../../../../lib/servidor';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Webhook chamado pelo Nexus quando o Breno toca num botão ou manda "PARA TUDO" no WhatsApp.
+ * Webhook chamado pelo Nexus quando o Breno toca num botão, manda "PARA TUDO", conversa ("Jarvis…", item 330)
+ * ou pede o teste de aviso (botão "Pedir teste ao Jarvis").
  * Contrato: docs/INTEGRACAO-NEXUS.md. Sem assinatura válida, nada acontece.
  */
 export async function POST(req: NextRequest) {
@@ -30,6 +39,25 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
-  const resultado = await processarEventoNexus(banco, obterRegras(), evento);
+  const regras = obterRegras();
+  const resultado = await processarEventoNexus(banco, regras, evento, depsDoPainel(regras.aprovacao.numeros_autorizados));
   return NextResponse.json({ ok: true, resultado });
+}
+
+/** Chave da IA e caminho dos avisos (opcionais). Modelo da conversa: Haiku por padrão (regra do Breno: sem Sonnet). */
+function depsDoPainel(numerosAutorizados: string[]): DepsEventoNexus {
+  const chave = process.env.JARVIS_CORE_ANTHROPIC_API_KEY;
+  const url = process.env.JARVIS_CORE_NEXUS_AVISOS_URL;
+  const segredo = process.env.JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO;
+  const destino = destinoDosAvisos(numerosAutorizados);
+  return {
+    cerebro: chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA ?? 'claude-haiku-5-5' }) : null,
+    avisarAgora:
+      url && segredo
+        ? async (m) => {
+            await notificadorNexus(url, segredo, destino)(m);
+            return destino;
+          }
+        : undefined,
+  };
 }
