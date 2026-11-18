@@ -3,6 +3,18 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 000000. Atualização de 18/11/2026: painel sai da Vercel e vai para o VPS (item 369 do Quadro do Nexus)
+
+- A Vercel do Breno está bloqueada. O painel passa a rodar no VPS da Hostinger, em container (`jarvis-painel`), atrás do Caddy
+  do WhatsApp, no endereço **https://jarvis.nexus-hub.api.br** (DNS no Registro.br, registro A para 179.197.227.23).
+- Arquivos: `deploy/painel.Dockerfile`, `deploy/painel-entrypoint.sh`, `deploy/instalar-painel.sh` (instala e atualiza; roda
+  como root no VPS). Segredos: Dory (`bws run`, mesmo token do worker), inclusive no build (`--secret`), nada em arquivo.
+  O painel usa `JARVIS_CORE_DB_PAINEL_URL` como `DATABASE_URL` quando existir.
+- Depois de subir: trocar `JARVIS_PAINEL_URL` no Nexus (Dory nexus-producao + `/opt/nexus/env*`) e no worker; acrescentar o
+  endereço no login do Supabase (Auth › URL Configuration); conferir Gmail push, webhooks de pagamento e o conector MCP.
+  Plano completo: `claude/plano-jarvis-painel-vps.md` (Projeto NEXUS no claude.ai).
+- Não testado em Docker real (sem Docker na nuvem do Claude): o primeiro `instalar-painel.sh` no VPS é o teste.
+
 ## 00000. Atualização de 17/11/2026: conversa pelo WhatsApp e teste de aviso (item 330 do Quadro do Nexus)
 
 - `POST /api/aprovacoes/whatsapp` aceita `tipo: "conversa"` (o Breno fala com o Jarvis começando com "Jarvis…") e `tipo: "teste"`
