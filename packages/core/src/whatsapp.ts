@@ -10,6 +10,7 @@ import type { Regras } from './regras.ts';
 import { responderConversa } from './conversa.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
 import type { MensagemParaBreno } from './avisos.ts';
+import type { ClienteNexusMcp } from './nexus-mcp.ts';
 
 /** Eventos que o Nexus manda para o Jarvis (contrato em docs/INTEGRACAO-NEXUS.md). */
 export const esquemaEventoNexus = z.discriminatedUnion('tipo', [
@@ -57,6 +58,8 @@ export interface DepsEventoNexus {
   cerebro?: Cerebro | null;
   /** manda um aviso direto ao Nexus (o mesmo caminho dos avisos do worker) e diz para quem foi */
   avisarAgora?: (m: MensagemParaBreno) => Promise<{ numeros: string[]; emails: string[] }>;
+  /** item 416: ferramentas do Nexus na conversa (Quadro, Atlas, saúde, banco só leitura) */
+  nexus?: ClienteNexusMcp | null;
 }
 
 export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: unknown, deps: DepsEventoNexus = {}): Promise<ResultadoEvento> {
@@ -70,7 +73,7 @@ export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: 
   }
 
   if (e.tipo === 'conversa') {
-    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null);
+    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null, deps.nexus ?? null);
     return 'resposta' in r ? { tipo: 'conversa', resposta: r.resposta } : { tipo: 'ignorado', motivo: r.ignorado };
   }
 
