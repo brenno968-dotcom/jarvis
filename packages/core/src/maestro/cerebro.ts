@@ -1,6 +1,7 @@
 // "Cérebro" do Maestro: transforma o comando do Breno num plano (seção 24, Maestro).
 // A IA só PROPÕE: o plano passa pela validação (seção 11) e pela aprovação do Breno.
 import { requisitarJson } from '../http.ts';
+import type { FerramentaIa } from '../nexus-mcp.ts';
 import type { Regras } from '../regras.ts';
 import { ROTEIROS } from './modelos.ts';
 import { validarPlano, type PlanoValidado } from './plano.ts';
@@ -8,6 +9,52 @@ import { validarPlano, type PlanoValidado } from './plano.ts';
 export interface Cerebro {
   /** Devolve o texto da resposta da IA (deve conter um JSON de plano). */
   pensar(sistema: string, mensagens: { role: 'user' | 'assistant'; content: string }[]): Promise<string>;
+  /** Item 416 (parte 2): conversa usando ferramentas (tool use), com limite de rodadas e de tempo total. */
+  pensarComFerramentas?(sistema: string, pergunta: string, ferramentas: FerramentaIa[], executar: ExecutarFerramenta, o?: OpcoesFerramentas): Promise<string>;
+}
+
+export type ExecutarFerramenta = (nome: string, args: Record<string, unknown>, timeoutMs: number) => Promise<string>;
+export interface OpcoesFerramentas {
+  /** Rodadas de ferramenta (padrão 5). */
+  rodadas?: number;
+  /** Tempo total em ms (padrão 20 s: o Nexus espera 25 s pela resposta da conversa). */
+  prazoMs?: number;
+  agora?: () => number;
+}
+/** Prazo padrão da conversa com ferramentas: abaixo dos 22 s combinados (o Nexus corta em 25 s). */
+export const PRAZO_CONVERSA_MS = 20_000;
+
+type Bloco = { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } | { type: 'tool_result'; tool_use_id: string; content: string };
+type MensagemIa = { role: 'user' | 'assistant'; content: string | Bloco[] };
+
+/** Laço de tool use, separado do HTTP para dar para testar. `chamarIa` recebe o tempo que sobra. */
+export async function lacoFerramentas(
+  chamarIa: (mensagens: MensagemIa[], timeoutMs: number, comFerramentas: boolean) => Promise<{ content: Bloco[]; stop_reason?: string }>,
+  pergunta: string,
+  executar: ExecutarFerramenta,
+  o: OpcoesFerramentas = {},
+): Promise<string> {
+  const agora = o.agora ?? Date.now;
+  const fim = agora() + (o.prazoMs ?? PRAZO_CONVERSA_MS);
+  const rodadas = o.rodadas ?? 5;
+  const mensagens: MensagemIa[] = [{ role: 'user', content: pergunta }];
+  for (let i = 0; i <= rodadas; i++) {
+    const sobra = fim - agora();
+    if (sobra < 1500) return 'Demorei demais para juntar tudo. Pergunte de um jeito mais curto ou peça uma parte por vez.';
+    // última rodada: sem ferramentas, a IA tem de responder com o que já juntou
+    const r = await chamarIa(mensagens, sobra, i < rodadas);
+    const usos = r.content.filter((b): b is Extract<Bloco, { type: 'tool_use' }> => b.type === 'tool_use');
+    const texto = r.content.filter((b): b is Extract<Bloco, { type: 'text' }> => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (!usos.length || r.stop_reason !== 'tool_use') return texto;
+    mensagens.push({ role: 'assistant', content: r.content });
+    const resultados: Bloco[] = [];
+    for (const u of usos) {
+      const resto = Math.max(500, fim - agora() - 1500);
+      resultados.push({ type: 'tool_result', tool_use_id: u.id, content: await executar(u.name, u.input ?? {}, Math.min(10_000, resto)) });
+    }
+    mensagens.push({ role: 'user', content: resultados });
+  }
+  return 'Não consegui fechar a resposta a tempo.';
 }
 
 export function criarCerebroAnthropic(o: { chave: string; modelo?: string; fetchImpl?: typeof fetch }): Cerebro {
@@ -21,6 +68,21 @@ export function criarCerebroAnthropic(o: { chave: string; modelo?: string; fetch
         timeoutMs: 120_000,
       });
       return r.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
+    },
+    async pensarComFerramentas(sistema, pergunta, ferramentas, executar, op) {
+      return lacoFerramentas(
+        (mensagens, timeoutMs, comFerramentas) =>
+          requisitarJson<{ content: Bloco[]; stop_reason?: string }>('https://api.anthropic.com/v1/messages', {
+            metodo: 'POST',
+            fetchImpl: o.fetchImpl,
+            cabecalhos: { 'x-api-key': o.chave, 'anthropic-version': '2023-06-01' },
+            corpo: { model: o.modelo ?? 'claude-haiku-5-5', max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
+            timeoutMs,
+          }),
+        pergunta,
+        executar,
+        op,
+      );
     },
   };
 }

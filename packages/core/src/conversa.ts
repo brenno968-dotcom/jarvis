@@ -7,6 +7,7 @@ import type { Banco } from './banco.ts';
 import { numeroAutorizado } from './aprovacoes.ts';
 import { registrarAuditoria } from './auditoria.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
+import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { Regras } from './regras.ts';
 import { saudeDoJarvis } from './saude.ts';
 
@@ -39,6 +40,17 @@ export function instrucoesConversa(via: ViaConversa): string {
   ].join('\n');
 }
 
+/** Item 416 (parte 2): o que muda quando a conversa tem as ferramentas do Nexus. */
+export const INSTRUCOES_FERRAMENTAS = [
+  'Você tem as ferramentas do Nexus: Quadro de Pedidos (pedidos_*), Atlas (atlas_*, a memória das conversas), sistema_saude (o Pulso: Vigia,',
+  'Carteiro, Marcapasso, Dory, Xavier, WhatsApp, servidor) e o banco do Nexus SÓ PARA LER (banco_tabelas, banco_consultar: um SELECT por vez).',
+  'Use as ferramentas para responder com dado de verdade (no máximo 3 chamadas, a resposta tem de sair rápido). Ao consultar o banco,',
+  'veja antes as colunas com banco_tabelas se não souber o nome, e traga só o que responde a pergunta (count, sum, limit).',
+  'Gravar: só no Quadro (pedidos_criar, pedidos_atualizar) e no Atlas (atlas_gravar), e só quando o Breno pedir. Qualquer outra ação',
+  '(publicar, apagar, pagar, mexer em servidor, conta ou senha) vai para a fila e pede o "Aprovar": diga isso, não tente fazer.',
+  'Nunca repita CPF, telefone, senha ou token que aparecer num resultado.',
+].join('\n');
+
 async function resumoStatus(banco: Banco): Promise<string> {
   const s = await saudeDoJarvis(banco);
   const fila = Object.entries(s.fila).map(([k, n]) => `${k}: ${n}`).join(', ') || 'vazia';
@@ -58,6 +70,7 @@ export async function responderConversa(
   regras: Regras,
   e: { numero: string; texto: string; via: ViaConversa },
   cerebro: Cerebro | null,
+  nexus: ClienteNexusMcp | null = null,
 ): Promise<ResultadoConversa> {
   // pelo número: só o autorizado. Pela senha: o Nexus conferiu a senha e assinou o pedido (HMAC).
   if (e.via === 'numero' && !numeroAutorizado(regras, e.numero)) {
@@ -70,6 +83,21 @@ export async function responderConversa(
   if (/^(status|situa[cç][aã]o|como (vai|est[aá]s?))\??$/i.test(pergunta)) return { resposta: await resumoStatus(banco) };
   if (!cerebro) return { resposta: 'Recebi. A minha IA ainda não está ligada (falta a chave da IA do Jarvis), então por enquanto só entendo "Jarvis status" e "Jarvis ajuda".' };
   try {
+    // item 416: com as ferramentas do Nexus só pelo número autorizado (a sessão com senha não lê dado do sistema)
+    if (nexus && cerebro.pensarComFerramentas && e.via === 'numero') {
+      const ferramentas = await nexus.ferramentas().catch(() => []);
+      if (ferramentas.length) {
+        const usadas: string[] = [];
+        const r = (
+          await cerebro.pensarComFerramentas(`${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}`, pergunta.slice(0, 2000), ferramentas, async (nome, args, ms) => {
+            usadas.push(nome);
+            return nexus.chamar(nome, args, ms);
+          })
+        ).trim();
+        await registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'conversa_ferramentas_nexus', detalhes: { ferramentas: usadas } });
+        return { resposta: r.slice(0, 1500) || 'Não consegui pensar numa resposta agora. Tente de novo.' };
+      }
+    }
     const r = (await cerebro.pensar(instrucoesConversa(e.via), [{ role: 'user', content: pergunta.slice(0, 2000) }])).trim();
     return { resposta: r.slice(0, 1500) || 'Não consegui pensar numa resposta agora. Tente de novo.' };
   } catch {

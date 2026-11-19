@@ -3,6 +3,14 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 0000000. Atualização de 19/11/2026: conversa com as ferramentas do Nexus (item 416, parte 2)
+
+- **Feito:** `packages/core/src/nexus-mcp.ts` (cliente do conector `/api/mcp` do Nexus, assinado com `JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO`; endereço = `JARVIS_CORE_NEXUS_MCP_URL` ou a origem de `JARVIS_CORE_NEXUS_AVISOS_URL` + `/api/mcp`). Só passam as ferramentas de `FERRAMENTAS_NEXUS_PERMITIDAS`: ler Quadro, Atlas, `sistema_saude`, `banco_tabelas` e `banco_consultar` (só leitura); gravar só Quadro e Atlas.
+- `Cerebro.pensarComFerramentas` (`lacoFerramentas`): tool use da Anthropic, Haiku, até 5 rodadas, **20 s no total** (o Nexus espera 25 s). Na última rodada a IA responde sem ferramenta.
+- `responderConversa` usa as ferramentas só pelo número autorizado (sessão com senha continua sem dado do sistema). A auditoria grava só o NOME das ferramentas usadas, nunca o texto.
+- **Testado:** `test/conversa-ferramentas.test.ts` (assinatura, filtro da lista, laço, prazo). `fase2`/`revisao-final` falham só sem o Chromium do Playwright no ambiente (igual antes).
+- **Falta:** o Breno rodar `instalar-painel.sh` no Console web do VPS para publicar o painel; token `bws` da conta `jarvis-core`; chave SSH do Jarvis no VPS; token do GitHub.
+
 ## 000000. Atualização de 18/11/2026: painel sai da Vercel e vai para o VPS (item 369 do Quadro do Nexus)
 
 - A Vercel do Breno está bloqueada. O painel passa a rodar no VPS da Hostinger, em container (`jarvis-painel`), atrás do Caddy
