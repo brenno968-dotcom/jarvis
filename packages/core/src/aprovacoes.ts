@@ -26,11 +26,27 @@ export function segredoAprovacao(): string | undefined {
 export async function criarAprovacao(
   db: Consultavel,
   regras: Regras,
-  p: { tarefaId?: string; planoId?: string; resumo: string; exigePainel?: boolean; origem?: { componente: string; escopo: string } },
+  p: {
+    tarefaId?: string;
+    planoId?: string;
+    resumo: string;
+    exigePainel?: boolean;
+    origem?: { componente: string; escopo: string };
+    /** Item 793: tool MCP externa a executar (uma vez) depois da aprovação; ver mcp-cliente/execucao.ts. */
+    mcp?: { servidor: string; tool: string; acao: string; args: Record<string, unknown> };
+  },
   segredo: string | undefined = segredoAprovacao(),
 ): Promise<{ id: string; token: string }> {
   const id = randomUUID();
   const token = segredo ? tokenDaAprovacao(segredo, id) : randomBytes(24).toString('base64url');
+  if (p.mcp) {
+    await db.query(
+      `insert into aprovacoes (id, tarefa_id, plano_id, resumo, token_hash, expira_em, exige_painel, mcp_servidor, mcp_tool, mcp_acao, mcp_args, mcp_estado)
+       values ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7, $8, $9, $10, $11, 'pendente')`,
+      [id, p.tarefaId ?? null, p.planoId ?? null, p.resumo, hashToken(token), regras.aprovacao.expira_em_minutos, Boolean(p.exigePainel), p.mcp.servidor, p.mcp.tool, p.mcp.acao, JSON.stringify(p.mcp.args)],
+    );
+    return { id, token };
+  }
   if (p.origem) {
     await db.query(
       `insert into aprovacoes (id, tarefa_id, plano_id, resumo, token_hash, expira_em, exige_painel, origem_componente, origem_escopo)

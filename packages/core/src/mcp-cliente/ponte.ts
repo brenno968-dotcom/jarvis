@@ -5,13 +5,14 @@
 // - Todo resultado volta redigido (segredos) e embrulhado como dado NÃO CONFIÁVEL de fonte externa.
 import type { Consultavel } from '../banco.ts';
 import { criarAprovacao } from '../aprovacoes.ts';
+import { enfileirarAviso } from '../avisos.ts';
 import type { Cerebro, ExecutarFerramenta, OpcoesFerramentas } from '../maestro/cerebro.ts';
 import type { FerramentaIa } from '../nexus-mcp.ts';
 import { redator } from '../redacao.ts';
 import type { Regras } from '../regras.ts';
 import type { NivelSemaforo } from '../tipos.ts';
 import { criarClienteMcp, type ClienteMcp } from './cliente.ts';
-import { acaoDaTool, nivelDaTool, nomeNaApi, separarNomeNaApi, type ServidorMcpResolvido } from './config.ts';
+import { acaoDaTool, nivelDaTool, nomeNaApi, separarNomeNaApi, timeoutDaTool, type ServidorMcpResolvido } from './config.ts';
 
 export const LIMITE_RESULTADO_MCP = 6000;
 const PADRAO_NOME_API = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -50,11 +51,18 @@ interface ToolExposta {
   acao: string;
   nivel: NivelSemaforo;
   cliente: ClienteMcp;
+  /** Teto de tempo desta tool (timeouts_ms do servidor ou o padrão dele). */
+  timeoutMs: number;
 }
 
 export interface FerramentasMcp {
   ferramentas: FerramentaIa[];
   executar: ExecutarFerramenta;
+  /**
+   * Executor com o anti-loop e o pedido de aprovação zerados, para reaproveitar as mesmas ferramentas/clientes em
+   * outra conversa (cache por processo) sem que uma chamada de ontem conte como "repetida".
+   */
+  paraConversa(): Pick<FerramentasMcp, 'ferramentas' | 'executar'>;
   /** Servidores que não deram a lista de tools (rede/credencial), para o log. */
   falhas: { servidor: string; motivo: string }[];
   /** Tools da allowlist que o servidor não anunciou ou que ficaram de fora (nome da API inválido, risco sem aprovação). */
@@ -123,7 +131,7 @@ export async function prepararFerramentasMcp(servidores: ServidorMcpResolvido[],
         omitidas.push({ servidor: s.nome, tool: nome, motivo: 'nome fora do padrão da API (64 caracteres, [a-zA-Z0-9_-])' });
         continue;
       }
-      expostas.set(api, { servidor: s.nome, tool: nome, acao: acaoDaTool(s.nome, nome), nivel, cliente });
+      expostas.set(api, { servidor: s.nome, tool: nome, acao: acaoDaTool(s.nome, nome), nivel, cliente, timeoutMs: timeoutDaTool(s, nome) });
       ferramentas.push({
         name: api,
         description: `[externa: ${s.nome}${nivel === 'verde' ? '' : `, risco ${nivel}: pede aprovação, não executa direto`}] ${(t.description ?? '').slice(0, 800)}`.trim(),
@@ -132,7 +140,6 @@ export async function prepararFerramentasMcp(servidores: ServidorMcpResolvido[],
     }
   }
 
-  const jaChamadas = new Set<string>();
   const avisar = async (e: EventoMcp) => {
     try {
       await o.aoUsar?.(e);
@@ -141,50 +148,63 @@ export async function prepararFerramentasMcp(servidores: ServidorMcpResolvido[],
     }
   };
 
-  const executar: ExecutarFerramenta = async (nomeApi, args, timeoutMs) => {
-    const t = expostas.get(nomeApi);
-    if (!t) {
-      // inclui tool fora da allowlist, mesmo que o servidor a tenha: nunca chega ao cliente
-      const p = separarNomeNaApi(nomeApi);
-      if (p) await avisar({ servidor: p.servidor, tool: p.tool, acao: acaoDaTool(p.servidor, p.tool), nivel: 'vermelho', desfecho: 'bloqueada' });
-      return `Ferramenta "${nomeApi}" não é permitida.`;
-    }
-    const base = { servidor: t.servidor, tool: t.tool, acao: t.acao, nivel: t.nivel };
-    const argsLimpos = redator.redigirValor(args ?? {});
-    if (t.nivel !== 'verde') {
-      if (!o.solicitarAprovacao) {
-        await avisar({ ...base, desfecho: 'bloqueada' });
-        return `A ferramenta ${nomeApi} tem risco ${t.nivel} e está bloqueada: não executei.`;
+  const criarExecutor = (): ExecutarFerramenta => {
+    const jaChamadas = new Set<string>();
+    const jaPedidas = new Map<string, string>();
+    return async (nomeApi, args, timeoutMs) => {
+      const t = expostas.get(nomeApi);
+      if (!t) {
+        // inclui tool fora da allowlist, mesmo que o servidor a tenha: nunca chega ao cliente
+        const p = separarNomeNaApi(nomeApi);
+        if (p) await avisar({ servidor: p.servidor, tool: p.tool, acao: acaoDaTool(p.servidor, p.tool), nivel: 'vermelho', desfecho: 'bloqueada' });
+        return `Ferramenta "${nomeApi}" não é permitida.`;
       }
+      const base = { servidor: t.servidor, tool: t.tool, acao: t.acao, nivel: t.nivel };
+      const argsLimpos = redator.redigirValor(args ?? {});
+      if (t.nivel !== 'verde') {
+        if (!o.solicitarAprovacao) {
+          await avisar({ ...base, desfecho: 'bloqueada' });
+          return `A ferramenta ${nomeApi} tem risco ${t.nivel} e está bloqueada: não executei.`;
+        }
+        const chavePedido = `${nomeApi}:${chaveCanonica(argsLimpos)}`;
+        const anterior = jaPedidas.get(chavePedido);
+        if (anterior) {
+          await avisar({ ...base, desfecho: 'repetida' });
+          return `A ferramenta ${nomeApi} já teve a aprovação pedida nesta conversa (pedido ${anterior}). NÃO peça de novo: diga que está aguardando o OK do Breno.`;
+        }
+        try {
+          const id = await o.solicitarAprovacao({ ...base, args: argsLimpos });
+          jaPedidas.set(chavePedido, id);
+          await avisar({ ...base, desfecho: 'aprovacao_pedida' });
+          return `A ferramenta ${nomeApi} tem risco ${t.nivel}: NÃO executei agora. Pedi aprovação ao Breno (pedido ${id}); se ele aprovar, executo uma vez e mando o resultado por aviso. Diga isso na resposta.`;
+        } catch (e) {
+          await avisar({ ...base, desfecho: 'bloqueada' });
+          return `A ferramenta ${nomeApi} tem risco ${t.nivel} e não consegui pedir a aprovação (${redator.redigir(String((e as Error)?.message ?? e))}): não executei.`;
+        }
+      }
+      // anti-loop: mesma tool com os mesmos argumentos na mesma conversa não repete
+      const chave = `${nomeApi}:${chaveCanonica(argsLimpos)}`;
+      if (jaChamadas.has(chave)) {
+        await avisar({ ...base, desfecho: 'repetida' });
+        return 'Você já chamou esta ferramenta com os mesmos argumentos nesta conversa. Use o resultado anterior ou responda com o que já tem.';
+      }
+      jaChamadas.add(chave);
       try {
-        const id = await o.solicitarAprovacao({ ...base, args: argsLimpos });
-        await avisar({ ...base, desfecho: 'aprovacao_pedida' });
-        return `A ferramenta ${nomeApi} tem risco ${t.nivel}: NÃO executei. Pedi aprovação ao Breno (pedido ${id}). Diga isso na resposta.`;
+        const r = await t.cliente.chamarTool(t.tool, argsLimpos, Math.max(500, Math.min(timeoutMs, t.timeoutMs)));
+        await avisar({ ...base, desfecho: r.erro ? 'erro' : 'executada' });
+        return embrulharDadoExterno(t.servidor, t.tool, r.texto || '(sem conteúdo)', r.erro);
       } catch (e) {
-        await avisar({ ...base, desfecho: 'bloqueada' });
-        return `A ferramenta ${nomeApi} tem risco ${t.nivel} e não consegui pedir a aprovação (${redator.redigir(String((e as Error)?.message ?? e))}): não executei.`;
+        await avisar({ ...base, desfecho: 'erro' });
+        return embrulharDadoExterno(t.servidor, t.tool, `Erro ao usar ${nomeApi}: ${String((e as Error)?.message ?? e)}`, true);
       }
-    }
-    // anti-loop: mesma tool com os mesmos argumentos na mesma conversa não repete
-    const chave = `${nomeApi}:${chaveCanonica(argsLimpos)}`;
-    if (jaChamadas.has(chave)) {
-      await avisar({ ...base, desfecho: 'repetida' });
-      return 'Você já chamou esta ferramenta com os mesmos argumentos nesta conversa. Use o resultado anterior ou responda com o que já tem.';
-    }
-    jaChamadas.add(chave);
-    try {
-      const r = await t.cliente.chamarTool(t.tool, argsLimpos, timeoutMs);
-      await avisar({ ...base, desfecho: r.erro ? 'erro' : 'executada' });
-      return embrulharDadoExterno(t.servidor, t.tool, r.texto || '(sem conteúdo)', r.erro);
-    } catch (e) {
-      await avisar({ ...base, desfecho: 'erro' });
-      return embrulharDadoExterno(t.servidor, t.tool, `Erro ao usar ${nomeApi}: ${String((e as Error)?.message ?? e)}`, true);
-    }
+    };
   };
+  const executar = criarExecutor();
 
   return {
     ferramentas,
     executar,
+    paraConversa: () => ({ ferramentas, executar: criarExecutor() }),
     falhas,
     omitidas,
     async encerrar() {
@@ -193,11 +213,16 @@ export async function prepararFerramentasMcp(servidores: ServidorMcpResolvido[],
   };
 }
 
-/** Fluxo real de aprovação (tabela `aprovacoes`, aprovacoes.ts). Aprovar NÃO executa a tool: ver docs/STATUS.md. */
+/**
+ * Fluxo real de aprovação (tabela `aprovacoes`, aprovacoes.ts). A aprovação guarda servidor, tool e argumentos
+ * (já redigidos); quando o Breno aprova, o worker executa a tools/call uma vez (`executarMcpAprovadas`).
+ * Também enfileira o aviso com os botões Aprovar/Recusar (sem ele o pedido nunca chegaria ao Breno).
+ */
 export function solicitadorDeAprovacao(db: Consultavel, regras: Regras): (p: PedidoAprovacaoMcp) => Promise<string> {
   return async (p) => {
-    const resumo = `Ferramenta externa ${p.servidor}/${p.tool} (risco ${p.nivel}) com ${JSON.stringify(p.args).slice(0, 300)}`;
-    const { id } = await criarAprovacao(db, regras, { resumo, origem: { componente: 'mcp-cliente', escopo: p.acao } });
+    const resumo = `Ferramenta externa ${p.servidor}/${p.tool} (risco ${p.nivel}) com ${JSON.stringify(p.args).slice(0, 300)}. Ao aprovar, executo uma vez.`;
+    const { id } = await criarAprovacao(db, regras, { resumo, mcp: { servidor: p.servidor, tool: p.tool, acao: p.acao, args: p.args } });
+    await enfileirarAviso(db, { tipo: 'pedido_aprovacao', aprovacaoId: id });
     return id;
   };
 }

@@ -4,6 +4,7 @@ import {
   devolverTravadasVencidas,
   enviarAvisosPendentes,
   enviarDecisoesPendentesAoNexus,
+  executarMcpAprovadas,
   expirarAprovacoesVencidas,
   lerEmergencia,
   log,
@@ -19,6 +20,11 @@ export interface OpcoesWorker extends DepsExecutor {
   /** Envia avisos ao Breno (via Nexus). Sem ele, os avisos ficam na fila. */
   notificar?: import('@jarvis/core').Notificador;
   segredoAprovacao?: string;
+  /**
+   * Item 793: executa (uma vez) as tools MCP de aprovações aprovadas. Roda em segundo plano para uma tool longa
+   * (deep_research, até 10 min) não parar a fila; `aguardar` espera o fim (testes).
+   */
+  mcp?: { servidores: import('@jarvis/core').ServidorMcpResolvido[]; criarCliente?: (s: import('@jarvis/core').ServidorMcpResolvido) => import('@jarvis/core').ClienteMcp; aguardar?: boolean };
   /** Liga o teste diário das chaves (desligado nos testes de fila). */
   testarChaves?: boolean;
   /** Liga o orquestrador do Maestro (anda com os planos aprovados). */
@@ -31,6 +37,25 @@ export interface OpcoesWorker extends DepsExecutor {
   heartbeatMs?: number;
 }
 
+let mcpEmCurso: Promise<void> | null = null;
+
+async function rodarMcpAprovadas(o: OpcoesWorker): Promise<void> {
+  if (!o.mcp?.servidores.length) return;
+  const m = o.mcp;
+  const trabalho = async () => {
+    try {
+      await executarMcpAprovadas(o.banco, { servidores: m.servidores, criarCliente: m.criarCliente });
+    } catch (e) {
+      log('erro', 'execução das aprovações MCP falhou', { erro: String(e) });
+    }
+  };
+  if (m.aguardar) return trabalho();
+  if (mcpEmCurso) return;
+  mcpEmCurso = trabalho().finally(() => {
+    mcpEmCurso = null;
+  });
+}
+
 export type ResultadoCiclo = 'suspenso' | 'vazio' | 'executou';
 
 /** Um ciclo: manutenção, checagem de emergência, pega e executa no máximo uma tarefa. */
@@ -38,6 +63,7 @@ export async function ciclo(o: OpcoesWorker): Promise<ResultadoCiclo> {
   const { banco, workerId } = o;
   await devolverTravadasVencidas(banco);
   await expirarAprovacoesVencidas(banco);
+  await rodarMcpAprovadas(o);
   await criarLembretesDeAprovacao(banco, o.regras.aprovacao.lembrete_apos_minutos);
   if (o.notificar) {
     await enviarAvisosPendentes(banco, o.notificar, o.segredoAprovacao);

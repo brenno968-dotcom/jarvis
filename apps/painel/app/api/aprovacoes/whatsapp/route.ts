@@ -3,6 +3,8 @@ import {
   criarCerebroAnthropic,
   criarGravadorBanco,
   criarClienteNexusMcp,
+  criarProvedorMcp,
+  type ProvedorMcp,
   urlDoMcp,
   destinoDosAvisos,
   enviarDecisoesPendentesAoNexus,
@@ -16,6 +18,13 @@ import {
 import { obterBanco, obterRegras } from '../../../../lib/servidor';
 
 export const dynamic = 'force-dynamic';
+
+/** Item 793: ponte MCP com cache por processo (60 s). Sem config/URL/servidor, segue sem MCP. */
+let provedorMcp: ProvedorMcp | null = null;
+function mcpDoPainel(): ProvedorMcp {
+  provedorMcp ??= criarProvedorMcp({ db: obterBanco(), regras: obterRegras() });
+  return provedorMcp;
+}
 
 /**
  * Webhook chamado pelo Nexus quando o Breno toca num botão, manda "PARA TUDO", conversa ("Jarvis…", item 330)
@@ -64,6 +73,8 @@ function depsDoPainel(numerosAutorizados: string[]): DepsEventoNexus {
     cerebro: chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA ?? 'claude-haiku-5-5', gravador: criarGravadorBanco(obterBanco()) }) : null,
     // item 416 (parte 2): a conversa usa as ferramentas do Nexus, assinando com o mesmo segredo dos avisos
     nexus: urlMcp && segredo ? criarClienteNexusMcp({ url: urlMcp, segredo }) : null,
+    // item 793: tools do OpenJarvis (e outros servidores MCP da config); amarelo/vermelho viram pedido de aprovação
+    mcp: chave ? mcpDoPainel() : null,
     avisarAgora:
       url && segredo
         ? async (m) => {
