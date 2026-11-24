@@ -17,11 +17,48 @@ services:
       # DATABASE_URL vem da Dory (bws run). Não colocar valor aqui.
     secrets:
       - bws_token
+    networks:
+      - default
+      - jarvis-interna
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Piloto OpenJarvis (Item 808): MCP HTTP interno, sem porta publicada.
+  # Build: docker build -f deploy/openjarvis/Dockerfile -t openjarvis-mcp:latest .
+  # Worker acessa em http://openjarvis:8765/mcp (JARVIS_CORE_OPENJARVIS_MCP_URL).
+  openjarvis:
+    image: openjarvis-mcp:latest
+    container_name: openjarvis
+    restart: unless-stopped
+    user: "1002:1002"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 256m
+    cpus: "0.5"
+    # Sem "ports:" de proposito. Segredos vem do env do VPS (bws run), nunca daqui.
+    environment:
+      - ANTHROPIC_API_KEY          # so necessaria se for usar engine cloud; o MCP de tools nao a usa
+      - OPENJARVIS_MCP_TOKEN       # Bearer exigido nas chamadas ao /mcp
+    volumes:
+      - openjarvis-data:/data
+    networks:
+      - jarvis-interna
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  openjarvis-data:
+
+networks:
+  jarvis-interna:
+    driver: bridge
 
 secrets:
   bws_token:

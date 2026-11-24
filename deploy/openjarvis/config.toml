@@ -1,0 +1,28 @@
+# OpenJarvis do piloto (Item 808): servidor interno do Jarvis, so leitura.
+# Perfil "server": security.mode=block, rate limit 30 rpm, capabilities default-deny.
+[security]
+profile = "server"
+allowed_dirs = ["/data/workspace"]
+
+[engine]
+default = "cloud"
+
+[intelligence]
+default_model = "claude-haiku-5-5"
+
+[agent]
+default_agent = "simple"
+
+# Allowlist unica: o adaptador MCP so expoe estas. Tools de escrita/execucao
+# (shell_exec, docker_shell_exec, code_interpreter, file_write, apply_patch,
+# git_commit, browser_*, agent_spawn...) ficam de fora e sao recusadas por
+# mcp_http.py mesmo que alguem as liste aqui.
+[tools]
+enabled = ["calculator", "think", "web_search", "file_read", "memory_search", "memory_retrieve"]
+
+[analytics]
+enabled = false
+choice_recorded = true
+
+[telemetry]
+enabled = false
