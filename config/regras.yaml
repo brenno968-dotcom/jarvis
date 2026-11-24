@@ -104,6 +104,7 @@ modelos:
     conversa: haiku   # WhatsApp/painel: respostas curtas com tools
     plano: sonnet     # Maestro: JSON de plano validado
     oferta: sonnet    # produção de produto/página/anúncio
+    proativo: sonnet  # item 829: agente proativo (propostas de ação)
   heuristica:         # só para finalidade fora do mapa
     prompt_medio_chars: 6000      # +1 ponto
     prompt_grande_chars: 20000    # +2 pontos
@@ -131,6 +132,21 @@ loop_guard:
   rodadas_sem_progresso: 3
   executor_janela_minutos: 30    # executor: escopo (plano/negócio) parado por tanto tempo recomeça do zero
   executor_max_mesma_acao: 20    # executor: mesma ação por escopo
+
+# Item 829: agente proativo. Junta contexto a cada `intervalo_h` horas e PROPÕE ações; toda proposta nasce pendente de
+# aprovação (nada executa sozinho). Desligado por padrão. Não roda com PARA TUDO ativo nem na janela de silêncio.
+proativo:
+  ligado: false
+  intervalo_h: 5
+  silencio:                       # sem rodar e sem avisar nesse horário (fuso abaixo)
+    ativo: true
+    inicio_h: 22
+    fim_h: 7
+    fuso: America/Sao_Paulo
+  max_propostas: 3                # por rodada (soma das empresas)
+  dias_dedup: 7                   # não repropõe o mesmo (título+ação) pendente ou criado/recusado nesse prazo
+  expira_em_horas: 24             # validade do pedido de aprovação de cada proposta
+  teto_custo_mensal_brl: 50       # gasto do próprio agente (llm_chamadas, finalidade proativo); acima disso não roda
 
 emergencia:
   comando_whatsapp: "PARA TUDO"

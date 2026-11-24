@@ -49,3 +49,4 @@ export * from './mcp-cliente/index.ts';
 export * from './memoria/chunker.ts';
 export * from './memoria/embeddings.ts';
 export * from './memoria/memoria.ts';
+export * from './proativo/index.ts';

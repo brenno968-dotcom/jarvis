@@ -29,7 +29,7 @@ describe('escada: seleção do modelo', () => {
     const m = regrasTeste().modelos;
     expect(m.degraus).toEqual({ haiku: H, sonnet: S, opus: O });
     expect(m.permitir_opus).toBe(false);
-    expect(m.por_finalidade).toEqual({ conversa: 'haiku', plano: 'sonnet', oferta: 'sonnet' });
+    expect(m.por_finalidade).toEqual({ conversa: 'haiku', plano: 'sonnet', oferta: 'sonnet', proativo: 'sonnet' });
     expect(regrasTeste().loop_guard).toMatchObject({ max_chamadas_mesma_tool: 8, repeticoes_ciclo: 2, rodadas_sem_progresso: 3 });
   });
 

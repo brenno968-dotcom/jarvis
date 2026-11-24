@@ -1,6 +1,9 @@
 // Rotinas periódicas do worker (frequências em ROTINAS; cada uma roda em um worker só por janela).
 import {
   criarTarefa,
+  motivoDeNaoRodar,
+  rodarProativo,
+  type DepsProativo,
   enviarRelatorioDiario,
   executarSeVencida,
   lembrarRenovacoes,
@@ -21,6 +24,8 @@ export const ROTINAS = {
   verificar_reposicao: 24 * HORA,
   lembrar_renovacoes: 24 * HORA,
   relatorio_diario: 24 * HORA,
+  /** Item 829: intervalo real vem de `regras.proativo.intervalo_h` (este é só o padrão). */
+  proativo: 5 * HORA,
 } as const;
 
 /** Prazos padrão da reposição (ajustar por fornecedor quando houver o cadastro de fornecedores). */
@@ -67,10 +72,10 @@ export async function agendarLeituraMeta(banco: Banco, regras: Regras, hoje = ne
   return n;
 }
 
-export async function rodarAgendadas(banco: Banco, regras: Regras): Promise<Record<string, boolean>> {
+export async function rodarAgendadas(banco: Banco, regras: Regras, proativo: DepsProativo = {}): Promise<Record<string, boolean>> {
   const feitas: Record<string, boolean> = {};
-  const marca = async (nome: keyof typeof ROTINAS, fn: () => Promise<unknown>) => {
-    feitas[nome] = (await executarSeVencida(banco, nome, ROTINAS[nome], fn)).executou;
+  const marca = async (nome: keyof typeof ROTINAS, fn: () => Promise<unknown>, intervaloMs: number = ROTINAS[nome]) => {
+    feitas[nome] = (await executarSeVencida(banco, nome, intervaloMs, fn)).executou;
   };
   await marca('vigiar_orcamentos', () => vigiarOrcamentos(banco, regras));
   await marca('otimizar_campanhas', () => otimizarCampanhas(banco, regras, (id) => metasDoNegocio(banco, id)));
@@ -83,5 +88,11 @@ export async function rodarAgendadas(banco: Banco, regras: Regras): Promise<Reco
   });
   await marca('lembrar_renovacoes', () => lembrarRenovacoes(banco));
   await marca('relatorio_diario', () => enviarRelatorioDiario(banco));
+  // Item 829: desligado, PARA TUDO, silêncio noturno ou teto de custo = nem marca a janela (roda assim que liberar).
+  if (!(await motivoDeNaoRodar(banco, regras, proativo.agora))) {
+    await marca('proativo', () => rodarProativo(banco, regras, proativo), regras.proativo.intervalo_h * HORA);
+  } else {
+    feitas.proativo = false;
+  }
   return feitas;
 }

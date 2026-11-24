@@ -26,6 +26,10 @@ export async function criarTarefa(banco: Banco, regras: Regras, nova: NovaTarefa
   if (nivel === 'vermelho' && !nova.resumo) {
     throw new Error('ação vermelha precisa de um resumo em linguagem simples para a aprovação');
   }
+  const pedeOk = nivel === 'vermelho' || Boolean(nova.forcarAprovacao);
+  if (pedeOk && !nova.resumo) {
+    throw new Error('tarefa que pede aprovação precisa de um resumo em linguagem simples');
+  }
   return emTransacao(banco, async (c) => {
     const ins = await c.query(
       `insert into tarefas (plano_id, etapa_id, empresa_id, negocio_id, agente, acao, plataforma,
@@ -44,7 +48,7 @@ export async function criarTarefa(banco: Banco, regras: Regras, nova: NovaTarefa
         JSON.stringify(redator.redigirValor(nova.parametros ?? {})),
         nova.idempotencyKey,
         nivel,
-        nivel === 'vermelho' ? 'aguardando_aprovacao' : 'pendente',
+        pedeOk ? 'aguardando_aprovacao' : 'pendente',
         nova.maxTentativas ?? regras.tentativas.max_padrao,
       ],
     );
@@ -54,14 +58,19 @@ export async function criarTarefa(banco: Banco, regras: Regras, nova: NovaTarefa
     }
     const tarefa = ins.rows[0] as Tarefa;
     let tokenAprovacao: string | undefined;
-    if (nivel === 'vermelho') {
+    if (pedeOk) {
       const ap = await criarAprovacao(c, regras, {
         tarefaId: tarefa.id,
         resumo: nova.resumo!,
         exigePainel: exigeConfirmacaoNoPainel(regras, nova.acao, nova.parametros),
+        expiraEmMinutos: nova.expiraEmMinutos,
       });
       tokenAprovacao = ap.token;
-      await enfileirarAviso(c, { tipo: 'pedido_aprovacao', aprovacaoId: ap.id, tarefaId: tarefa.id });
+      if (nova.semAviso) {
+        await c.query(`update aprovacoes set lembrete_enviado_em = now() where id = $1`, [ap.id]);
+      } else {
+        await enfileirarAviso(c, { tipo: 'pedido_aprovacao', aprovacaoId: ap.id, tarefaId: tarefa.id });
+      }
     }
     await registrarAuditoria(c, {
       quem,
