@@ -73,7 +73,7 @@ async function principal(): Promise<void> {
 
   // Agente de oferta: precisa da chave da IA (sem ela, as etapas de oferta esperam).
   const chaveIa = await opcional('JARVIS_CORE_ANTHROPIC_API_KEY');
-  if (chaveIa) registro.registrar(criarAdaptadorOferta({ banco, cerebro: criarCerebroAnthropic({ chave: chaveIa, modelo: process.env.JARVIS_MODELO_IA, gravador: criarGravadorBanco(banco), contexto: { finalidade: 'oferta' } }) }));
+  if (chaveIa) registro.registrar(criarAdaptadorOferta({ banco, cerebro: criarCerebroAnthropic({ chave: chaveIa, modelo: process.env.JARVIS_MODELO_IA, escada: regras.modelos, loopGuard: regras.loop_guard, gravador: criarGravadorBanco(banco), contexto: { finalidade: 'oferta' } }) }));
 
   // Gmail (códigos de verificação) e aviso instantâneo.
   let gmail: ClienteGmail | undefined;

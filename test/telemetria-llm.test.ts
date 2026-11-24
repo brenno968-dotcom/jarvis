@@ -222,7 +222,25 @@ describe('gravador no banco simulado', () => {
     await criarGravadorBanco({ query } as unknown as Pick<Banco, 'query'>).gravar(base);
     const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain('insert into llm_chamadas');
-    expect(params).toEqual([base.empresaId, null, null, 'm', 'f', 1, 2, 3, 4, 0.5, 2.5, 9, 200, null, 'end_turn']);
+    expect(params).toEqual([base.empresaId, null, null, 'm', 'f', 1, 2, 3, 4, 0.5, 2.5, 9, 200, null, 'end_turn', null]);
+  });
+
+  it('item 792: grava fallback_de; sem a migration 0014 (coluna ausente) regrava sem a coluna', async () => {
+    const chamada: ChamadaLlm = {
+      modelo: 'm', finalidade: 'f', tokensEntrada: 0, tokensSaida: 0, tokensCacheLeitura: 0, tokensCacheEscrita: 0,
+      custoUsd: null, custoBrl: null, latenciaMs: 1, statusHttp: 200, erro: null, stopReason: null, fallbackDe: 'claude-sonnet-5-5',
+    };
+    const ok = vi.fn(async () => ({ rows: [] }));
+    await criarGravadorBanco({ query: ok } as unknown as Pick<Banco, 'query'>).gravar(chamada);
+    expect((ok.mock.calls[0] as unknown as [string, unknown[]])[1].at(-1)).toBe('claude-sonnet-5-5');
+    const antiga = vi.fn(async (sql: string) => {
+      if (sql.includes('fallback_de')) throw Object.assign(new Error('column "fallback_de" does not exist'), { code: '42703' });
+      return { rows: [] };
+    });
+    await criarGravadorBanco({ query: antiga } as unknown as Pick<Banco, 'query'>).gravar(chamada);
+    expect(antiga).toHaveBeenCalledTimes(2);
+    const falha = vi.fn(async () => { throw Object.assign(new Error('outro erro'), { code: '23505' }); });
+    await expect(criarGravadorBanco({ query: falha } as unknown as Pick<Banco, 'query'>).gravar(chamada)).rejects.toThrow('outro erro');
   });
 });
 
@@ -302,9 +320,9 @@ describe('telemetria no Postgres e tool jarvis_custos', () => {
     await criarGravadorBanco(banco).gravar({
       modelo: 'claude-sonnet-5-5', finalidade: 'oferta', tarefaId: tarefa, empresaId: empresa,
       tokensEntrada: 1, tokensSaida: 1, tokensCacheLeitura: 0, tokensCacheEscrita: 0,
-      custoUsd: 0, custoBrl: 0, latenciaMs: 1, statusHttp: 200, erro: null, stopReason: null,
+      custoUsd: 0, custoBrl: 0, latenciaMs: 1, statusHttp: 200, erro: null, stopReason: null, fallbackDe: 'claude-haiku-5-5',
     });
-    const r = await banco.query(`select tarefa_id, empresa_id from llm_chamadas where tarefa_id = $1`, [tarefa]);
-    expect(r.rows[0]).toEqual({ tarefa_id: tarefa, empresa_id: empresa });
+    const r = await banco.query(`select tarefa_id, empresa_id, fallback_de from llm_chamadas where tarefa_id = $1`, [tarefa]);
+    expect(r.rows[0]).toEqual({ tarefa_id: tarefa, empresa_id: empresa, fallback_de: 'claude-haiku-5-5' });
   });
 });

@@ -1,6 +1,7 @@
 import {
   concluir,
   enfileirarAviso,
+  GuardasPorEscopo,
   lerEfeito,
   log,
   redator,
@@ -29,6 +30,14 @@ export interface DepsExecutor {
   /** Só para testes: simula o worker caindo depois do efeito e antes de concluir. */
   aposEfeito?: (t: Tarefa) => Promise<void>;
 }
+
+// Item 792: LoopGuard do executor, uma instância por DepsExecutor (memória do processo).
+const guardasDoExecutor = new WeakMap<DepsExecutor, GuardasPorEscopo>();
+const guardasDe = (d: DepsExecutor): GuardasPorEscopo => {
+  let g = guardasDoExecutor.get(d);
+  if (!g) guardasDoExecutor.set(d, (g = new GuardasPorEscopo(d.regras.loop_guard)));
+  return g;
+};
 
 function criarContexto(d: DepsExecutor, t: Tarefa): ContextoExecucao {
   return {
@@ -86,6 +95,26 @@ export async function executarTarefa(d: DepsExecutor, t: Tarefa): Promise<Tarefa
     return 'concluida';
   }
 
+  // LoopGuard (item 792): ciclo A→B→A→B, mesma ação demais ou rodadas sem progresso no mesmo plano/negócio.
+  const ferramenta = `${t.plataforma ?? 'interno'}/${t.acao}`;
+  const guarda = d.regras.loop_guard.ativo ? guardasDe(d).obter(t.plano_id ?? t.negocio_id ?? t.id) : null;
+  const negado = guarda?.antes(ferramenta, t.parametros ?? {}) ?? null;
+  if (negado) {
+    await registrarAuditoria(d.banco, {
+      quem: `worker:${d.workerId}`,
+      acao: 'loop_guard',
+      empresaId: t.empresa_id,
+      negocioId: t.negocio_id,
+      tarefaId: t.id,
+      detalhes: { padrao: negado.padrao, tool: ferramenta, motivo: negado.motivo },
+    });
+    return registrarFalha(d.banco, d.regras, t, d.workerId, {
+      tipo: 'definitivo',
+      codigo: 'LOOP_DETECTADO',
+      mensagem: `LoopGuard interrompeu: ${negado.motivo}`,
+    });
+  }
+
   let resultado: Resultado;
   try {
     resultado = await adaptador.executar(t.acao, t.parametros ?? {}, criarContexto(d, t));
@@ -108,5 +137,20 @@ export async function executarTarefa(d: DepsExecutor, t: Tarefa): Promise<Tarefa
   await salvarEfeito(d.banco, t.idempotency_key, t.id, resultado);
   if (d.aposEfeito) await d.aposEfeito(t);
   await concluir(d.banco, t, d.workerId, resultado);
+  // a tarefa concluiu normalmente; se o fluxo todo estagnou, o guard trava as PRÓXIMAS do mesmo escopo
+  if (guarda) {
+    guarda.depois(ferramenta, JSON.stringify(resultado.dados ?? resultado.mensagem ?? null));
+    const parado = guarda.fecharRodada();
+    if (parado) {
+      await registrarAuditoria(d.banco, {
+        quem: `worker:${d.workerId}`,
+        acao: 'loop_guard',
+        empresaId: t.empresa_id,
+        negocioId: t.negocio_id,
+        tarefaId: t.id,
+        detalhes: { padrao: parado.padrao, tool: ferramenta, motivo: parado.motivo },
+      });
+    }
+  }
   return 'concluida';
 }

@@ -92,6 +92,46 @@ tentativas:
   multiplicador: 2
   espera_maxima_segundos: 900
 
+# Item 792: escada de modelos. Seleção: override explícito da chamada > mapa por finalidade > heurística de complexidade.
+# Opus fica desligado: só sai com permitir_opus: true (e nunca é usado como fallback de servidor sobrecarregado).
+modelos:
+  permitir_opus: false
+  degraus:
+    haiku: claude-haiku-5-5
+    sonnet: claude-sonnet-5-5
+    opus: claude-opus-5-5
+  por_finalidade:
+    conversa: haiku   # WhatsApp/painel: respostas curtas com tools
+    plano: sonnet     # Maestro: JSON de plano validado
+    oferta: sonnet    # produção de produto/página/anúncio
+  heuristica:         # só para finalidade fora do mapa
+    prompt_medio_chars: 6000      # +1 ponto
+    prompt_grande_chars: 20000    # +2 pontos
+    tools_medio: 6                # +1 ponto
+    tools_muitos: 12              # +2 pontos
+    pontos_por_categoria: 2       # raciocínio, código ou dinheiro no texto
+    subir_sonnet_a_partir: 2
+    subir_opus_a_partir: 6        # só vale com permitir_opus
+    palavras:
+      raciocinio: [analise, analisar, compar, estrateg, planej, diagnostic, investig, otimiz, "passo a passo", "por que", tradeoff, priorizar]
+      codigo: [codigo, funcao, typescript, refator, migration, "stack trace", bug, sql, regex, algoritmo, implement]
+      dinheiro: ["r$", preco, pagamento, reembolso, orcamento, fatura, imposto, comissao, margem, cobranca, pix, estorno]
+  fallback:
+    status_transitorios: [429, 500, 502, 503, 504, 529]   # status 0 (rede/timeout) sempre conta
+    tentativas_por_degrau: 2     # 1 tentativa + 1 repetição com backoff curto, depois troca de degrau
+    backoff_inicial_ms: 300
+    backoff_maximo_ms: 2000
+    max_trocas: 2
+
+# Item 792: LoopGuard (conversa com tools e executor). Dispara: interrompe, audita e devolve o motivo.
+loop_guard:
+  ativo: true
+  max_chamadas_mesma_tool: 8     # mesma tool por tarefa/conversa
+  repeticoes_ciclo: 2            # A,B,A,B
+  rodadas_sem_progresso: 3
+  executor_janela_minutos: 30    # executor: escopo (plano/negócio) parado por tanto tempo recomeça do zero
+  executor_max_mesma_acao: 20    # executor: mesma ação por escopo
+
 emergencia:
   comando_whatsapp: "PARA TUDO"
   revogar_tokens: [jarvis, carteiro, marcapasso]
