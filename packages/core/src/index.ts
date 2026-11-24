@@ -41,6 +41,7 @@ export * from './pedidos-nexus.ts';
 export * from './decisao-nexus.ts';
 export * from './conversa.ts';
 export * from './nexus-mcp.ts';
+export * from './mcp-cliente/index.ts';
 export * from './memoria/chunker.ts';
 export * from './memoria/embeddings.ts';
 export * from './memoria/memoria.ts';

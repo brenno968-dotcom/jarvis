@@ -7,6 +7,7 @@ import type { Banco } from './banco.ts';
 import { numeroAutorizado } from './aprovacoes.ts';
 import { registrarAuditoria } from './auditoria.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
+import { INSTRUCOES_DADO_EXTERNO, type FerramentasMcp } from './mcp-cliente/ponte.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { Regras } from './regras.ts';
 import { saudeDoJarvis } from './saude.ts';
@@ -71,6 +72,8 @@ export async function responderConversa(
   e: { numero: string; texto: string; via: ViaConversa },
   cerebro: Cerebro | null,
   nexus: ClienteNexusMcp | null = null,
+  /** Item 793: tools de servidores MCP externos já filtradas pela allowlist/semáforo (`prepararFerramentasMcp`). */
+  mcpExterno: Pick<FerramentasMcp, 'ferramentas' | 'executar'> | null = null,
 ): Promise<ResultadoConversa> {
   // pelo número: só o autorizado. Pela senha: o Nexus conferiu a senha e assinou o pedido (HMAC).
   if (e.via === 'numero' && !numeroAutorizado(regras, e.numero)) {
@@ -84,14 +87,16 @@ export async function responderConversa(
   if (!cerebro) return { resposta: 'Recebi. A minha IA ainda não está ligada (falta a chave da IA do Jarvis), então por enquanto só entendo "Jarvis status" e "Jarvis ajuda".' };
   try {
     // item 416: com as ferramentas do Nexus só pelo número autorizado (a sessão com senha não lê dado do sistema)
-    if (nexus && cerebro.pensarComFerramentas && e.via === 'numero') {
-      const ferramentas = await nexus.ferramentas().catch(() => []);
+    if ((nexus || mcpExterno) && cerebro.pensarComFerramentas && e.via === 'numero') {
+      const ferramentas = [...(nexus ? await nexus.ferramentas().catch(() => []) : []), ...(mcpExterno?.ferramentas ?? [])];
       if (ferramentas.length) {
         const usadas: string[] = [];
+        const instrucoes = `${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}${mcpExterno?.ferramentas.length ? `\n${INSTRUCOES_DADO_EXTERNO}` : ''}`;
         const r = (
-          await cerebro.pensarComFerramentas(`${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}`, pergunta.slice(0, 2000), ferramentas, async (nome, args, ms) => {
+          await cerebro.pensarComFerramentas(instrucoes, pergunta.slice(0, 2000), ferramentas, async (nome, args, ms) => {
             usadas.push(nome);
-            return nexus.chamar(nome, args, ms);
+            if (nome.startsWith('mcp__')) return mcpExterno ? mcpExterno.executar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
+            return nexus ? nexus.chamar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
           })
         ).trim();
         await registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'conversa_ferramentas_nexus', detalhes: { ferramentas: usadas } });
