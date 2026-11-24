@@ -86,9 +86,9 @@ export const INSTRUCOES_DADO_EXTERNO =
  * O texto sai neutralizado (sem invisíveis, tags falsas escapadas); se suspeito/malicioso, a tag leva `injecao="..."`
  * e a detecção é auditada por `aoDetectar` (sem o texto inteiro).
  */
-export function embrulharDadoExterno(servidor: string, tool: string, texto: string, erro = false, aoDetectar?: AoDetectarInjecao): string {
+export function embrulharDadoExterno(servidor: string, tool: string, texto: string, erro = false, aoDetectar?: AoDetectarInjecao, limite = LIMITE_RESULTADO_MCP): string {
   const r = escanearInjecao(redator.redigir(texto));
-  const limpo = r.texto.replace(/<\/?\s*dado_externo\b[^>]*>/gi, '[tag removida]').slice(0, LIMITE_RESULTADO_MCP);
+  const limpo = r.texto.replace(/<\/?\s*dado_externo\b[^>]*>/gi, '[tag removida]').slice(0, limite);
   if (r.nivel !== 'limpo' && aoDetectar) {
     try {
       void Promise.resolve(aoDetectar({ fonte: `mcp:${servidor}/${tool}`, origem: 'externo', nivel: r.nivel, motivos: r.motivos, trechos: r.achados.slice(0, 3).map((a) => redator.redigir(a.trecho).slice(0, 120)), desfecho: 'detectado', tool })).catch(() => undefined);

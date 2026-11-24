@@ -3,20 +3,21 @@ name: web-summarize
 description: Resume o conteúdo de uma página, artigo ou texto da web em 5 a 7 pontos objetivos, separando o que é fato do que é opinião. Use quando o Breno mandar um link ou um texto longo e pedir resumo.
 license: Proprietary
 ferramentas_permitidas:
+  - web_abrir
   - mcp__openjarvis__web_search
 risco: verde
 origem: interna
 metadata:
   adaptada_de: openjarvis/web-summarize
-  versao: "1.0"
+  versao: "1.1"
 ---
 # Resumo de página
 
-Objetivo: resumo fiel e curto. O Jarvis não tem ferramenta de abrir link direto: trabalhe com o texto que o Breno colou ou, só se faltar, com o que a busca na web devolver sobre aquela página.
+Objetivo: resumo fiel e curto. Se o Breno mandou um link, abra com `web_abrir` (só leitura, até 20 mil caracteres, sem PDF); se colou o texto, use só ele.
 
 ## Passos
 
-1. Se o Breno colou o texto, use só ele. Se mandou apenas o link, tente `mcp__openjarvis__web_search` com o endereço ou o título; se não vier o conteúdo da página, diga que não conseguiu abrir e peça o texto.
+1. Se o Breno colou o texto, use só ele. Se mandou o link, chame `web_abrir` com ele (um link por vez, só os que o Breno mandou). Se a página não abrir (PDF, bloqueio, tamanho), tente `mcp__openjarvis__web_search` com o título; se ainda assim não vier o conteúdo, diga que não conseguiu abrir e peça o texto.
 2. Deixe de lado menus, propaganda e rodapé. Fique com o conteúdo principal.
 3. Escreva 5 a 7 pontos, do mais importante para o menos importante.
 

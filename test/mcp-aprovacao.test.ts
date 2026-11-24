@@ -87,19 +87,20 @@ async function aprovacaoMcp(): Promise<{ id: string; mcp_estado: string; status:
 
 describe('conversa do painel com a ponte MCP', () => {
   it('sem URL no ambiente: conversa segue normal, sem MCP', async () => {
-    let vistas = -1;
+    let vistas: string[] = [];
     const cerebro: Cerebro = {
       pensar: async () => 'resposta normal',
       pensarComFerramentas: async (_s, _p, tools) => {
-        vistas = tools.length;
+        vistas = tools.map((t) => t.name);
         return 'com ferramentas';
       },
     };
     const mcp = criarProvedorMcp({ db: banco, regras, env: {}, carregarConfig: () => CONFIG });
     expect(await mcp.obter()).toBeNull();
     const r = await processarEventoNexus(banco, regras, evento, { cerebro, mcp });
-    expect(r).toMatchObject({ tipo: 'conversa', resposta: 'resposta normal' });
-    expect(vistas).toBe(-1);
+    // item 852: sem MCP a conversa ainda tem as ferramentas locais (só leitura), e nenhuma mcp__*
+    expect(r).toMatchObject({ tipo: 'conversa', resposta: 'com ferramentas' });
+    expect(vistas).toEqual(['meta_metricas', 'web_abrir']);
   });
 
   it('config ilegível ou servidor fora do ar: segue sem MCP e o resultado negativo fica em cache curto', async () => {
