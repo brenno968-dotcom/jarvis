@@ -19,10 +19,12 @@ semaforo:
     - pausar_campanha
     - cotar_fretes
     # item 793: tools de servidores MCP externos (mcp_<servidor>_<tool>), só leitura
-    - mcp_openjarvis_deep_research
-    - mcp_openjarvis_knowledge_search
+    - mcp_openjarvis_calculator
+    - mcp_openjarvis_think
     - mcp_openjarvis_web_search
-    - mcp_openjarvis_audio_transcribe
+    - mcp_openjarvis_file_read
+    - mcp_openjarvis_memory_search
+    - mcp_openjarvis_memory_retrieve
     - mcp_nexus_pedidos_buscar_parecidos
     - mcp_nexus_pedidos_listar
     - mcp_nexus_pedidos_ver

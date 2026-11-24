@@ -149,7 +149,7 @@ describe('configuração dos servidores', () => {
   it('o arquivo do repositório é válido; openjarvis ativo, nexus desligado; sem URL no ambiente nada sobe', () => {
     const cfg = lerConfigMcpDeTexto(readFileSync('config/mcp-servidores.yaml', 'utf8'));
     expect(cfg.servidores.nexus!.ativo).toBe(false);
-    expect(cfg.servidores.openjarvis!.tools).toEqual(['deep_research', 'knowledge_search', 'web_search', 'audio_transcribe']);
+    expect(cfg.servidores.openjarvis!.tools).toEqual(['calculator', 'think', 'web_search', 'file_read', 'memory_search', 'memory_retrieve']);
     expect(resolverServidoresMcp(cfg, {})).toEqual([]);
     const r = resolverServidoresMcp(cfg, { JARVIS_CORE_OPENJARVIS_MCP_URL: 'http://x.teste/mcp', JARVIS_CORE_OPENJARVIS_MCP_TOKEN: 'tok-1234', JARVIS_CORE_NEXUS_MCP_URL: 'http://n.teste' });
     expect(r.map((s) => s.nome)).toEqual(['openjarvis']);

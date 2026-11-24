@@ -8,15 +8,17 @@ versao: 1
 servidores:
   openjarvis:
     ativo: true
-    descricao: OpenJarvis (pesquisa profunda, base de conhecimento, busca na web, transcrição de áudio)
+    descricao: OpenJarvis (calculadora, think, busca na web, leitura de arquivo, memória; adaptador deploy/openjarvis/mcp_http.py)
     url_env: JARVIS_CORE_OPENJARVIS_MCP_URL
     token_env: JARVIS_CORE_OPENJARVIS_MCP_TOKEN
-    timeout_ms: 60000
+    timeout_ms: 30000
     tools:
-      - deep_research
-      - knowledge_search
+      - calculator
+      - think
       - web_search
-      - audio_transcribe
+      - file_read
+      - memory_search
+      - memory_retrieve
 
   # Desligado por padrão. O Nexus já tem o cliente próprio assinado por HMAC (nexus-mcp.ts, usado na conversa);
   # só ligue esta entrada se o /api/mcp do Nexus passar a aceitar token Bearer.
