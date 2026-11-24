@@ -129,7 +129,7 @@ export const FERRAMENTAS: Ferramenta[] = [
 
 const CHAVES_SUSPEITAS = /(senha|password|passwd|secret|token|api[_-]?key|valor)/i;
 
-function temChaveSuspeita(o: unknown): string | null {
+export function temChaveSuspeita(o: unknown): string | null {
   if (!o || typeof o !== 'object') return null;
   for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
     if (CHAVES_SUSPEITAS.test(k) && k !== 'segredo' && k !== 'token_segredo') return k;

@@ -61,7 +61,10 @@ describe('rotinas agendadas', () => {
 
   it('o ciclo de rotinas roda tudo na primeira vez e nada na segunda', async () => {
     const a = await rodarAgendadas(banco, regras);
-    expect(Object.values(a).every(Boolean)).toBe(true);
+    // item 829: `proativo` vem desligado no regras.yaml e não entra na conta
+    const { proativo: _p1, ...aa } = a;
+    expect(_p1).toBe(false);
+    expect(Object.values(aa).every(Boolean)).toBe(true);
     const b = await rodarAgendadas(banco, regras);
     expect(Object.values(b).some(Boolean)).toBe(false);
     const av = await banco.query(`select conteudo->>'texto' as t from avisos`);

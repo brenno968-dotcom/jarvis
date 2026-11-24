@@ -31,6 +31,8 @@ export interface OpcoesWorker extends DepsExecutor {
   maestro?: boolean;
   /** Liga as rotinas periódicas (orçamento, otimização, métricas, reposição, renovações, relatório). */
   rotinas?: boolean;
+  /** Item 829: cérebro (finalidade `proativo`) do agente proativo. Sem ele a rotina não roda. */
+  cerebroProativo?: import('@jarvis/core').Cerebro;
   /** Rotinas que dependem de configuração (ex.: renovar o watch do Gmail). */
   extras?: () => Promise<void>;
   intervaloVazioMs?: number;
@@ -72,7 +74,7 @@ export async function ciclo(o: OpcoesWorker): Promise<ResultadoCiclo> {
   }
   if (o.testarChaves) await testarChavesSeVencido(o);
   if (o.maestro) await avancarPlanos(banco, o.regras);
-  if (o.rotinas) await rodarAgendadas(banco, o.regras);
+  if (o.rotinas) await rodarAgendadas(banco, o.regras, { cerebro: o.cerebroProativo });
   if (o.extras) await o.extras();
 
   if ((await lerEmergencia(banco)).parado) {

@@ -77,4 +77,10 @@ export interface NovaTarefa {
   maxTentativas?: number;
   /** Texto simples para a aprovação (obrigatório quando a ação for vermelha). */
   resumo?: string;
+  /** Item 829: nasce aguardando aprovação mesmo sendo verde/amarela (nada roda sem o OK). */
+  forcarAprovacao?: boolean;
+  /** Item 829: não enfileira o aviso individual do pedido (há um aviso-resumo agrupado) nem o lembrete. */
+  semAviso?: boolean;
+  /** Item 829: validade do pedido de aprovação em minutos (padrão: regras.aprovacao.expira_em_minutos). */
+  expiraEmMinutos?: number;
 }
