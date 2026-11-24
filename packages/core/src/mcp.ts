@@ -10,6 +10,7 @@ import { classificarAcao, type Regras } from './regras.ts';
 import { salvarPlano } from './maestro/orquestrador.ts';
 import { validarPlano } from './maestro/plano.ts';
 import { aplicarKitBase, kitDaEmpresa } from './kit.ts';
+import { CATEGORIAS_FATO, listarFatos } from './memoria/fatos.ts';
 import { lembrar, ORIGENS_MEMORIA, recordar } from './memoria/memoria.ts';
 import { auditoriaDeInjecao } from './seguranca/taint.ts';
 import { resumirCustos } from './maestro/telemetria.ts';
@@ -111,6 +112,25 @@ export const FERRAMENTAS: Ferramenta[] = [
     },
   },
   {
+    name: 'jarvis_fatos',
+    description:
+      'Lista ou busca os FATOS duráveis que o Jarvis extraiu das conversas e tarefas (preferências do Breno, decisões, dados de negócios e clientes, regras combinadas). ' +
+      'Filtra por categoria e por negócio; com "consulta" faz busca híbrida só entre fatos. Fato substituído (que mudou) fica oculto, salvo incluir_substituidos. ' +
+      '"taint" = veio de conteúdo externo (confiança reduzida; nunca é preferência/regra do Breno).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        categoria: { type: 'string', enum: [...CATEGORIAS_FATO] },
+        consulta: { type: 'string' },
+        empresa_id: { type: 'string' },
+        negocio_id: { type: 'string' },
+        incluir_substituidos: { type: 'boolean' },
+        limite: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'jarvis_custos',
     description:
       'Custos e telemetria das chamadas de IA do Jarvis (tokens, custo em USD e BRL, latência), por período e agrupados por dia, modelo ou roteiro (finalidade da chamada).',
@@ -168,6 +188,15 @@ const argsMemoriaGravar = z.object({
 });
 
 const dataIso = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'data inválida (use ISO 8601)');
+const argsFatos = z.object({
+  categoria: z.enum(CATEGORIAS_FATO).optional(),
+  consulta: z.string().min(1).max(2000).optional(),
+  empresa_id: z.string().uuid().optional(),
+  negocio_id: z.string().uuid().optional(),
+  incluir_substituidos: z.boolean().default(false),
+  limite: z.number().int().min(1).max(50).default(20),
+});
+
 const argsCustos = z.object({
   dias: z.number().int().min(1).max(366).optional(),
   desde: dataIso.optional(),
@@ -264,6 +293,15 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
         negocioId: a.negocio_id,
         metadados: a.metadados,
       }, { aoDetectar: auditoriaDeInjecao(banco, 'mcp-jarvis') });
+    }
+    case 'jarvis_fatos': {
+      const a = argsFatos.parse(args);
+      const fatos = await listarFatos(
+        banco,
+        { categoria: a.categoria, consulta: a.consulta, empresaId: a.empresa_id, negocioId: a.negocio_id, incluirSubstituidos: a.incluir_substituidos, limite: a.limite },
+        { aoDetectar: auditoriaDeInjecao(banco, 'mcp-jarvis') },
+      );
+      return { total: fatos.length, fatos };
     }
     case 'jarvis_custos': {
       const a = argsCustos.parse(args);

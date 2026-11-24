@@ -7,6 +7,7 @@ import type { Banco } from './banco.ts';
 import { numeroAutorizado } from './aprovacoes.ts';
 import { registrarAuditoria } from './auditoria.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
+import type { GanchoConversaFatos } from './memoria/fatos.ts';
 import { INSTRUCOES_DADO_EXTERNO, type FerramentasMcp } from './mcp-cliente/ponte.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { Regras } from './regras.ts';
@@ -75,7 +76,17 @@ export async function responderConversa(
   nexus: ClienteNexusMcp | null = null,
   /** Item 793: tools de servidores MCP externos já filtradas pela allowlist/semáforo (`prepararFerramentasMcp`). */
   mcpExterno: Pick<FerramentasMcp, 'ferramentas' | 'executar'> | null = null,
+  /** Item 845: gancho depois da resposta (extrator de fatos). Não bloqueante: nunca atrasa nem derruba a resposta. */
+  aoResponder: GanchoConversaFatos | null = null,
 ): Promise<ResultadoConversa> {
+  const concluir = (resposta: string, ferramentas: string[]): ResultadoConversa => {
+    try {
+      aoResponder?.({ pergunta: semChamado(e.texto), resposta, via: e.via, ferramentas });
+    } catch {
+      /* o gancho nunca atrapalha a resposta */
+    }
+    return { resposta };
+  };
   // pelo número: só o autorizado. Pela senha: o Nexus conferiu a senha e assinou o pedido (HMAC).
   if (e.via === 'numero' && !numeroAutorizado(regras, e.numero)) {
     await registrarAuditoria(banco, { quem: 'whatsapp', acao: 'conversa_numero_nao_autorizado' });
@@ -113,11 +124,11 @@ export async function responderConversa(
           })
         ).trim();
         await registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'conversa_ferramentas_nexus', detalhes: { ferramentas: usadas } });
-        return { resposta: r.slice(0, 1500) || 'Não consegui pensar numa resposta agora. Tente de novo.' };
+        return r ? concluir(r.slice(0, 1500), usadas) : { resposta: 'Não consegui pensar numa resposta agora. Tente de novo.' };
       }
     }
     const r = (await cerebro.pensar(instrucoesConversa(e.via), [{ role: 'user', content: pergunta.slice(0, 2000) }])).trim();
-    return { resposta: r.slice(0, 1500) || 'Não consegui pensar numa resposta agora. Tente de novo.' };
+    return r ? concluir(r.slice(0, 1500), []) : { resposta: 'Não consegui pensar numa resposta agora. Tente de novo.' };
   } catch {
     return { resposta: 'A IA não respondeu agora. Tente de novo em alguns minutos.' };
   }

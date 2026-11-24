@@ -25,7 +25,7 @@ export const esquemaModelos = z.object({
     })
     .default({}),
   /** finalidade → degrau. Finalidade fora do mapa usa a heurística. */
-  por_finalidade: z.record(z.string(), degrau).default({ conversa: 'haiku', plano: 'sonnet', oferta: 'sonnet', proativo: 'sonnet' }),
+  por_finalidade: z.record(z.string(), degrau).default({ conversa: 'haiku', plano: 'sonnet', oferta: 'sonnet', proativo: 'sonnet', fatos: 'haiku' }),
   heuristica: z
     .object({
       prompt_medio_chars: z.number().int().positive().default(6000),

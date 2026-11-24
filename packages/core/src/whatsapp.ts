@@ -9,6 +9,7 @@ import { pararTudo } from './emergencia.ts';
 import type { Regras } from './regras.ts';
 import { responderConversa } from './conversa.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
+import type { GanchoConversaFatos } from './memoria/fatos.ts';
 import type { MensagemParaBreno } from './avisos.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { FerramentasMcp } from './mcp-cliente/ponte.ts';
@@ -64,6 +65,8 @@ export interface DepsEventoNexus {
   nexus?: ClienteNexusMcp | null;
   /** item 793: ferramentas de servidores MCP externos (cache por processo; nunca lança, sem MCP devolve null) */
   mcp?: { obter(): Promise<Pick<FerramentasMcp, 'ferramentas' | 'executar'> | null> } | null;
+  /** item 845: extrator de fatos duráveis depois da resposta (segundo plano, nunca atrasa a conversa) */
+  fatos?: GanchoConversaFatos | null;
 }
 
 export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: unknown, deps: DepsEventoNexus = {}): Promise<ResultadoEvento> {
@@ -78,7 +81,7 @@ export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: 
 
   if (e.tipo === 'conversa') {
     const mcpExterno = e.via === 'numero' && deps.cerebro && deps.mcp && numeroAutorizado(regras, e.numero) ? await deps.mcp.obter().catch(() => null) : null;
-    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null, deps.nexus ?? null, mcpExterno);
+    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null, deps.nexus ?? null, mcpExterno, deps.fatos ?? null);
     return 'resposta' in r ? { tipo: 'conversa', resposta: r.resposta } : { tipo: 'ignorado', motivo: r.ignorado };
   }
 

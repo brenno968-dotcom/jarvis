@@ -389,6 +389,7 @@ describe('Fase 1 — conector MCP', () => {
       'jarvis_propor_plano',
       'jarvis_memoria_buscar',
       'jarvis_memoria_gravar',
+      'jarvis_fatos',
       'jarvis_custos',
     ]);
     expect(await rpc('metodo/inexistente')).toMatchObject({ error: { code: -32601 } });

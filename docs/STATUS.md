@@ -3,6 +3,10 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 00000000. Atualização de 24/11/2026: extrator de fatos duráveis (item 845)
+
+- `packages/core/src/memoria/fatos.ts`: depois de cada conversa (número autorizado) e de cada tarefa concluída, o Haiku (finalidade `fatos`) extrai fatos curtos e os grava em `memoria_trechos` (`metadados.tipo = 'fato'`); sem segredo/CPF/telefone/cartão, fato externo com taint e sem virar preferência/regra, dedup e substituição só nos metadados; tool MCP `jarvis_fatos`; config `fatos:` no `regras.yaml`; **migration 0015 (grant de update em metadados) ainda não aplicada em produção**.
+
 ## 0000000. Atualização de 19/11/2026: conversa com as ferramentas do Nexus (item 416, parte 2)
 
 - **Feito:** `packages/core/src/nexus-mcp.ts` (cliente do conector `/api/mcp` do Nexus, assinado com `JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO`; endereço = `JARVIS_CORE_NEXUS_MCP_URL` ou a origem de `JARVIS_CORE_NEXUS_AVISOS_URL` + `/api/mcp`). Só passam as ferramentas de `FERRAMENTAS_NEXUS_PERMITIDAS`: ler Quadro, Atlas, `sistema_saude`, `banco_tabelas` e `banco_consultar` (só leitura); gravar só Quadro e Atlas.

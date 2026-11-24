@@ -3,12 +3,14 @@ import {
   criarCerebroAnthropic,
   criarGravadorBanco,
   criarClienteNexusMcp,
+  criarGanchoConversaFatos,
   criarProvedorMcp,
   type ProvedorMcp,
   urlDoMcp,
   destinoDosAvisos,
   enviarDecisoesPendentesAoNexus,
   log,
+  auditoriaDeInjecao,
   marcarWebhookVisto,
   notificadorNexus,
   processarEventoNexus,
@@ -71,8 +73,11 @@ function depsDoPainel(regras: Regras): DepsEventoNexus {
   const segredo = process.env.JARVIS_CORE_NEXUS_WEBHOOK_SEGREDO;
   const destino = destinoDosAvisos(numerosAutorizados);
   const urlMcp = urlDoMcp({ JARVIS_CORE_NEXUS_MCP_URL: process.env.JARVIS_CORE_NEXUS_MCP_URL, JARVIS_CORE_NEXUS_AVISOS_URL: url });
+  const cerebro = chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA, escada: regras.modelos, loopGuard: regras.loop_guard, gravador: criarGravadorBanco(obterBanco()) }) : null;
   return {
-    cerebro: chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA, escada: regras.modelos, loopGuard: regras.loop_guard, gravador: criarGravadorBanco(obterBanco()) }) : null,
+    cerebro,
+    // item 845: fatos duráveis da conversa, em segundo plano (a escada manda a finalidade `fatos` para o Haiku)
+    fatos: cerebro && regras.fatos.ligado ? criarGanchoConversaFatos({ banco: obterBanco(), cerebro, config: regras.fatos, aoDetectar: auditoriaDeInjecao(obterBanco(), 'fatos') }) : null,
     // item 416 (parte 2): a conversa usa as ferramentas do Nexus, assinando com o mesmo segredo dos avisos
     nexus: urlMcp && segredo ? criarClienteNexusMcp({ url: urlMcp, segredo }) : null,
     // item 793: tools do OpenJarvis (e outros servidores MCP da config); amarelo/vermelho viram pedido de aprovação
