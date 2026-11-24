@@ -11,7 +11,8 @@
     "test": "vitest run",
     "worker": "npm run start -w @jarvis/worker",
     "migrar": "tsx scripts/migrar.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "skills:importar": "tsx scripts/skills-importar.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

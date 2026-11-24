@@ -7,6 +7,8 @@ import type { Banco } from './banco.ts';
 import { numeroAutorizado } from './aprovacoes.ts';
 import { registrarAuditoria } from './auditoria.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
+import { NOME_TOOL_USAR_SKILL, SessaoSkills } from './skills/sessao.ts';
+import type { CatalogoSkills } from './skills/carregador.ts';
 import type { GanchoConversaFatos } from './memoria/fatos.ts';
 import { INSTRUCOES_DADO_EXTERNO, type FerramentasMcp } from './mcp-cliente/ponte.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
@@ -78,6 +80,8 @@ export async function responderConversa(
   mcpExterno: Pick<FerramentasMcp, 'ferramentas' | 'executar'> | null = null,
   /** Item 845: gancho depois da resposta (extrator de fatos). Não bloqueante: nunca atrasa nem derruba a resposta. */
   aoResponder: GanchoConversaFatos | null = null,
+  /** Item 793 (skills): catálogo de skills (só metadados). No prompt entram name+description; o corpo vem pela tool `usar_skill`. */
+  skills: CatalogoSkills | null = null,
 ): Promise<ResultadoConversa> {
   const concluir = (resposta: string, ferramentas: string[]): ResultadoConversa => {
     try {
@@ -99,9 +103,16 @@ export async function responderConversa(
   if (!cerebro) return { resposta: 'Recebi. A minha IA ainda não está ligada (falta a chave da IA do Jarvis), então por enquanto só entendo "Jarvis status" e "Jarvis ajuda".' };
   try {
     // item 416: com as ferramentas do Nexus só pelo número autorizado (a sessão com senha não lê dado do sistema)
-    if ((nexus || mcpExterno) && cerebro.pensarComFerramentas && e.via === 'numero') {
+    if ((nexus || mcpExterno || skills?.skills.length) && cerebro.pensarComFerramentas && e.via === 'numero') {
       const ferramentas = [...(nexus ? await nexus.ferramentas().catch(() => []) : []), ...(mcpExterno?.ferramentas ?? [])];
-      if (ferramentas.length) {
+      // item 793 (skills): o escopo só reduz as `ferramentas` acima (já filtradas por allowlist/semáforo)
+      const sessao = skills?.skills.length
+        ? new SessaoSkills(skills, ferramentas, {
+            regras,
+            aoUsar: (ev) => registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'skill_usada', detalhes: { skill: ev.skill, desfecho: ev.desfecho, ferramentas: ev.ferramentas ?? [], motivo: ev.motivo ?? null } }),
+          })
+        : null;
+      if (ferramentas.length || sessao) {
         const usadas: string[] = [];
         // item 815: taint anti-injeção (a pergunta é do Breno; o que vier das tools é escaneado e pesa nas tools sensíveis)
         const taint = new RastroTaint({
@@ -110,16 +121,18 @@ export async function responderConversa(
           solicitarAprovacao: solicitadorDeAprovacaoInjecao(banco, regras),
           aoDetectar: auditoriaDeInjecao(banco, 'whatsapp:numero'),
         });
-        const instrucoes = `${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}${mcpExterno?.ferramentas.length ? `\n${INSTRUCOES_DADO_EXTERNO}` : ''}`;
+        const instrucoes = `${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}${mcpExterno?.ferramentas.length ? `\n${INSTRUCOES_DADO_EXTERNO}` : ''}${sessao ? `\n${sessao.instrucoes()}` : ''}`;
         const r = (
-          await cerebro.pensarComFerramentas(instrucoes, pergunta.slice(0, 2000), ferramentas, async (nome, args, ms) => {
+          await cerebro.pensarComFerramentas(instrucoes, pergunta.slice(0, 2000), sessao ? sessao.ferramentas() : ferramentas, async (nome, args, ms) => {
             usadas.push(nome);
+            if (sessao && nome === NOME_TOOL_USAR_SKILL) return sessao.usar(args);
             if (nome.startsWith('mcp__')) return mcpExterno ? mcpExterno.executar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
             return nexus ? nexus.chamar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
           }, {
             // item 792: LoopGuard interrompe ciclo/excesso/sem progresso e registra na auditoria
             loopGuard: regras.loop_guard,
             taint,
+            escopo: sessao ?? undefined,
             aoLoop: (v) => registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'loop_guard', detalhes: { padrao: v.padrao, tool: v.tool ?? null, motivo: v.motivo } }),
           })
         ).trim();

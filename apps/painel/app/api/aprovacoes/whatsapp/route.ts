@@ -5,6 +5,7 @@ import {
   criarClienteNexusMcp,
   criarGanchoConversaFatos,
   criarProvedorMcp,
+  criarProvedorSkills,
   type ProvedorMcp,
   urlDoMcp,
   destinoDosAvisos,
@@ -27,6 +28,13 @@ let provedorMcp: ProvedorMcp | null = null;
 function mcpDoPainel(): ProvedorMcp {
   provedorMcp ??= criarProvedorMcp({ db: obterBanco(), regras: obterRegras() });
   return provedorMcp;
+}
+
+/** Item 793 (skills): catálogo de skills com cache de 60 s; skill rejeitada (formato, nome≠pasta, injeção) só vai para o log. */
+let provedorSkills: ReturnType<typeof criarProvedorSkills> | null = null;
+function skillsDoPainel() {
+  provedorSkills ??= criarProvedorSkills({ aoRejeitar: (r) => log('aviso', 'skill rejeitada', { pasta: r.pasta, motivo: r.motivo.slice(0, 300) }) });
+  return provedorSkills;
 }
 
 /**
@@ -82,6 +90,8 @@ function depsDoPainel(regras: Regras): DepsEventoNexus {
     nexus: urlMcp && segredo ? criarClienteNexusMcp({ url: urlMcp, segredo }) : null,
     // item 793: tools do OpenJarvis (e outros servidores MCP da config); amarelo/vermelho viram pedido de aprovação
     mcp: chave ? mcpDoPainel() : null,
+    // item 793 (skills): só name+description no prompt; o corpo vem pela tool usar_skill, que restringe as ferramentas
+    skills: cerebro ? skillsDoPainel() : null,
     avisarAgora:
       url && segredo
         ? async (m) => {

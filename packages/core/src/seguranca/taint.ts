@@ -11,7 +11,7 @@ import { registrarAuditoria } from '../auditoria.ts';
 import { enfileirarAviso } from '../avisos.ts';
 import { acaoDaTool, nivelDaTool, separarNomeNaApi } from '../mcp-cliente/config.ts';
 import { redator } from '../redacao.ts';
-import type { Regras } from '../regras.ts';
+import { classificarAcao, type Regras } from '../regras.ts';
 import type { NivelSemaforo } from '../tipos.ts';
 import { escanearInjecao, piorNivel, type NivelInjecao, type ResultadoInjecao } from './injecao.ts';
 
@@ -105,6 +105,8 @@ export function toolSensivelPeloNome(nome: string): boolean {
 
 /** Nível do semáforo de uma tool da conversa: `mcp__<servidor>__<tool>` ou tool do Nexus (ação mcp_nexus_<tool>). Sem entrada = vermelho. */
 export function nivelDaToolConversa(regras: Regras, nome: string): NivelSemaforo {
+  // item 793 (skills): tool interna que só carrega texto e restringe ferramentas (ação `usar_skill` no semáforo)
+  if (nome === 'usar_skill') return classificarAcao(regras, 'usar_skill');
   const p = separarNomeNaApi(nome);
   return p ? nivelDaTool(regras, p.servidor, p.tool) : nivelDaTool(regras, 'nexus', nome);
 }

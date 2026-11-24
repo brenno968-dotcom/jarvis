@@ -16,6 +16,7 @@ COPY tsconfig.base.json tsconfig.json ./
 COPY packages/core packages/core
 COPY apps/painel apps/painel
 COPY config config
+COPY skills skills
 
 ARG NEXT_PUBLIC_SUPABASE_URL=""
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=""
@@ -26,6 +27,6 @@ RUN NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" NEXT_PUBLIC_SUPABASE_AN
 RUN useradd --uid 1001 --no-create-home --shell /usr/sbin/nologin jarvis && chown -R 1001:1001 /app/apps/painel/.next
 USER 1001:1001
 WORKDIR /app/apps/painel
-ENV NODE_ENV=production HOME=/tmp NODE_OPTIONS=--max-old-space-size=512 JARVIS_REGRAS=/app/config/regras.yaml
+ENV NODE_ENV=production HOME=/tmp NODE_OPTIONS=--max-old-space-size=512 JARVIS_REGRAS=/app/config/regras.yaml JARVIS_SKILLS=/app/skills
 EXPOSE 3100
 CMD ["/app/node_modules/.bin/next", "start", "-H", "0.0.0.0", "-p", "3100"]
