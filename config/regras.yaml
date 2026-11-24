@@ -142,7 +142,7 @@ loop_guard:
 # Item 829: agente proativo. Junta contexto a cada `intervalo_h` horas e PROPÕE ações; toda proposta nasce pendente de
 # aprovação (nada executa sozinho). Desligado por padrão. Não roda com PARA TUDO ativo nem na janela de silêncio.
 proativo:
-  ligado: false
+  ligado: true
   intervalo_h: 5
   silencio:                       # sem rodar e sem avisar nesse horário (fuso abaixo)
     ativo: true
