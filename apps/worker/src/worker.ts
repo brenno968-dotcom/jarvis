@@ -3,6 +3,7 @@ import {
   criarLembretesDeAprovacao,
   devolverTravadasVencidas,
   enviarAvisosPendentes,
+  enviarDecisoesPendentesAoNexus,
   expirarAprovacoesVencidas,
   lerEmergencia,
   log,
@@ -38,7 +39,11 @@ export async function ciclo(o: OpcoesWorker): Promise<ResultadoCiclo> {
   await devolverTravadasVencidas(banco);
   await expirarAprovacoesVencidas(banco);
   await criarLembretesDeAprovacao(banco, o.regras.aprovacao.lembrete_apos_minutos);
-  if (o.notificar) await enviarAvisosPendentes(banco, o.notificar, o.segredoAprovacao);
+  if (o.notificar) {
+    await enviarAvisosPendentes(banco, o.notificar, o.segredoAprovacao);
+    // reenvia ao Nexus decisões (pedidos que nasceram lá) que não foram entregues na hora
+    await enviarDecisoesPendentesAoNexus(banco).catch((e) => log('erro', 'reenvio de decisão ao Nexus falhou', { erro: String(e) }));
+  }
   if (o.testarChaves) await testarChavesSeVencido(o);
   if (o.maestro) await avancarPlanos(banco, o.regras);
   if (o.rotinas) await rodarAgendadas(banco, o.regras);

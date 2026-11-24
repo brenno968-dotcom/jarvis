@@ -7,6 +7,8 @@ import { revalidatePath } from 'next/cache';
 import {
   criarTarefa,
   emitirCodigo,
+  enviarDecisoesPendentesAoNexus,
+  log,
   pararTudo,
   responderAprovacaoPeloPainel,
   retomar,
@@ -97,7 +99,9 @@ export async function responder(form: FormData): Promise<void> {
   const quem = await exigirSessao();
   const id = String(form.get('id') ?? '');
   const resposta = form.get('resposta') === 'aprovar' ? 'aprovar' : 'recusar';
-  await responderAprovacaoPeloPainel(obterBanco(), id, resposta, quem);
+  const banco = obterBanco();
+  await responderAprovacaoPeloPainel(banco, id, resposta, quem);
+  await enviarDecisoesPendentesAoNexus(banco).catch((e) => log('erro', 'envio da decisão ao Nexus falhou', { erro: String(e) }));
   revalidatePath('/');
 }
 

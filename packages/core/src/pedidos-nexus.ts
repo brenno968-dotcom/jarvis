@@ -3,6 +3,9 @@ import { emTransacao } from './banco.ts';
 import { registrarAuditoria } from './auditoria.ts';
 import { enfileirarAviso } from './avisos.ts';
 import { redator } from './redacao.ts';
+import { criarAprovacao } from './aprovacoes.ts';
+import { componenteTemDecisao } from './decisao-nexus.ts';
+import type { Regras } from './regras.ts';
 
 /**
  * Pedido do Pulso do Nexus (item 177 do Quadro): um problema que o Nexus não corrige sozinho.
@@ -39,8 +42,36 @@ export function lerPedidoNexus(bruto: unknown): PedidoNexus | null {
 export type ResultadoPedidoNexus = { registrado: true; avisado: boolean } | { registrado: false; motivo: string };
 
 /** Registra o pedido e, se não houver um igual nas últimas 6 h, avisa o Breno. */
-export async function registrarPedidoNexus(banco: Banco, p: PedidoNexus, urlNexus?: string): Promise<ResultadoPedidoNexus> {
+export async function registrarPedidoNexus(banco: Banco, p: PedidoNexus, urlNexus?: string, regras?: Regras): Promise<ResultadoPedidoNexus> {
   const texto = String(redator.redigirValor(p.texto));
+  // Pedido que espera decisão (ex.: xavier_lancamento): vira uma aprovação com botões Aprovar/Recusar;
+  // depois da resposta o Jarvis devolve a decisão assinada ao Nexus (decisao-nexus.ts).
+  if (regras && p.classe === 'breno' && p.escopo && componenteTemDecisao(p.componente)) {
+    return emTransacao(banco, async (c) => {
+      const origem = { componente: p.componente, escopo: p.escopo };
+      const ja = await c.query(
+        `select 1 from aprovacoes where origem_componente = $1 and origem_escopo = $2 and status = 'pendente' and expira_em > now() limit 1`,
+        [origem.componente, origem.escopo],
+      );
+      const nova = (ja.rowCount ?? 0) === 0;
+      if (nova) {
+        // pendente vencida ainda não expirada pelo worker: libera o índice único antes de criar outra
+        await c.query(
+          `update aprovacoes set status = 'expirada', respondido_em = now()
+            where origem_componente = $1 and origem_escopo = $2 and status = 'pendente' and expira_em <= now()`,
+          [origem.componente, origem.escopo],
+        );
+        const ap = await criarAprovacao(c, regras, { resumo: texto, origem });
+        await enfileirarAviso(c, { tipo: 'pedido_aprovacao', aprovacaoId: ap.id });
+      }
+      await registrarAuditoria(c, {
+        quem: 'nexus:pulso',
+        acao: 'pedido_nexus',
+        detalhes: { componente: p.componente, escopo: p.escopo, classe: p.classe, texto, link: p.link ?? null, avisado: nova, aprovacao: true },
+      });
+      return { registrado: true, avisado: nova } as const;
+    });
+  }
   return emTransacao(banco, async (c) => {
     const ja = await c.query(
       `select 1 from auditoria

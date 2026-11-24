@@ -87,6 +87,12 @@ São duas chamadas HTTP, ambas assinadas com o mesmo segredo compartilhado.
 - O Jarvis registra na auditoria (`pedido_nexus`) e avisa o Breno pelo WhatsApp (`pedido_humano`, com o link).
   O mesmo serviço + classe dentro de 6 horas vira um aviso só.
 - Resposta: `{ "ok": true, "resultado": { "registrado": true, "avisado": true|false } }`; corpo incompleto = 400; assinatura errada = 401.
+- **Pedidos que esperam decisão (item 706):** se o `componente` for `xavier_lancamento`, `estruturador`, `renave_cancelamento` ou
+  `conversor_carga` (classe `breno`, com `escopo`), o Jarvis cria uma **aprovação** (colunas `origem_componente`/`origem_escopo`,
+  migração 0010) e manda o aviso com botões Aprovar/Recusar. Quando o Breno responde (WhatsApp ou painel), o Jarvis faz `POST`
+  em `<JARVIS_NEXUS_URL>/api/jarvis/decisao` com `{ "componente", "escopo", "decisao": "aprovado" | "recusado" }`, assinado igual
+  aos avisos. Retry: 3 tentativas na hora (rede, 5xx, 429) e o worker reenvia a cada ciclo até 10 tentativas; 409 do Nexus
+  (já decidido) conta como entregue. Código: `packages/core/src/decisao-nexus.ts`.
 - Resolver sozinho (conta, número ou chave nova) fica para os adaptadores da Fase 1: senha, CAPTCHA e código continuam sempre com o Breno.
 
 ## 3. Vendas (Fase 6) — o que o Nexus precisa saber

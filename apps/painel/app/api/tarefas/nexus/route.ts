@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { lerPedidoNexus, marcarWebhookVisto, registrarPedidoNexus, verificarAssinatura } from '@jarvis/core';
-import { obterBanco } from '../../../../lib/servidor';
+import { obterBanco, obterRegras } from '../../../../lib/servidor';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +30,6 @@ export async function POST(req: NextRequest) {
   if (!pedido) return NextResponse.json({ ok: false, motivo: 'pedido incompleto' }, { status: 400 });
   const banco = obterBanco();
   if (!(await marcarWebhookVisto(banco, assinatura!))) return NextResponse.json({ ok: true, repetido: true });
-  const resultado = await registrarPedidoNexus(banco, pedido, process.env.JARVIS_NEXUS_URL ?? 'https://nexus-hub.api.br');
+  const resultado = await registrarPedidoNexus(banco, pedido, process.env.JARVIS_NEXUS_URL ?? 'https://nexus-hub.api.br', obterRegras());
   return NextResponse.json({ ok: true, resultado });
 }

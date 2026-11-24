@@ -26,11 +26,19 @@ export function segredoAprovacao(): string | undefined {
 export async function criarAprovacao(
   db: Consultavel,
   regras: Regras,
-  p: { tarefaId?: string; planoId?: string; resumo: string; exigePainel?: boolean },
+  p: { tarefaId?: string; planoId?: string; resumo: string; exigePainel?: boolean; origem?: { componente: string; escopo: string } },
   segredo: string | undefined = segredoAprovacao(),
 ): Promise<{ id: string; token: string }> {
   const id = randomUUID();
   const token = segredo ? tokenDaAprovacao(segredo, id) : randomBytes(24).toString('base64url');
+  if (p.origem) {
+    await db.query(
+      `insert into aprovacoes (id, tarefa_id, plano_id, resumo, token_hash, expira_em, exige_painel, origem_componente, origem_escopo)
+       values ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7, $8, $9)`,
+      [id, p.tarefaId ?? null, p.planoId ?? null, p.resumo, hashToken(token), regras.aprovacao.expira_em_minutos, Boolean(p.exigePainel), p.origem.componente, p.origem.escopo],
+    );
+    return { id, token };
+  }
   await db.query(
     `insert into aprovacoes (id, tarefa_id, plano_id, resumo, token_hash, expira_em, exige_painel)
      values ($1, $2, $3, $4, $5, now() + make_interval(mins => $6), $7)`,
