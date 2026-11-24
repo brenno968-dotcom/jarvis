@@ -41,6 +41,7 @@
 - Não precisa mexer no worker: ele já manda os avisos. Não precisa de SQL (usa auditoria e avisos, com os grants do painel).
 - Worker no VPS conferido em 15/11 02h50: `vps-hostinger-1` ativo, sinal em dia. Migração 0009 já está no GitHub.
 - Falta da Fase 0 real: Gmail OAuth, chave da IA do Jarvis, conta de máquina `jarvis-core` no Bitwarden (precisam do login do Breno).
+> **Item 790 (memória semântica):** migration `0011_memoria.sql` (pgvector, `memoria_trechos`, função `memoria_buscar` com RRF), `packages/core/src/memoria/` (chunker, embeddings Voyage, `lembrar`/`recordar`) e ferramentas MCP `jarvis_memoria_buscar`/`jarvis_memoria_gravar`. Env `VOYAGE_API_KEY` (opcional: sem ela só busca por palavras). Pendente: aplicar a migration em produção e configurar a chave; o CI passou a usar a imagem `pgvector/pgvector:pg16`.
 
 ## 000. Atualização de 10/11/2026 (quarta sessão): programação concluída
 
