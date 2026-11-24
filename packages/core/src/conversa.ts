@@ -10,6 +10,7 @@ import type { Cerebro } from './maestro/cerebro.ts';
 import { INSTRUCOES_DADO_EXTERNO, type FerramentasMcp } from './mcp-cliente/ponte.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { Regras } from './regras.ts';
+import { auditoriaDeInjecao, nivelDaToolConversa, RastroTaint, solicitadorDeAprovacaoInjecao } from './seguranca/taint.ts';
 import { saudeDoJarvis } from './saude.ts';
 
 export type ViaConversa = 'numero' | 'senha';
@@ -91,6 +92,13 @@ export async function responderConversa(
       const ferramentas = [...(nexus ? await nexus.ferramentas().catch(() => []) : []), ...(mcpExterno?.ferramentas ?? [])];
       if (ferramentas.length) {
         const usadas: string[] = [];
+        // item 815: taint anti-injeção (a pergunta é do Breno; o que vier das tools é escaneado e pesa nas tools sensíveis)
+        const taint = new RastroTaint({
+          pergunta,
+          nivelDaTool: (n) => nivelDaToolConversa(regras, n),
+          solicitarAprovacao: solicitadorDeAprovacaoInjecao(banco, regras),
+          aoDetectar: auditoriaDeInjecao(banco, 'whatsapp:numero'),
+        });
         const instrucoes = `${instrucoesConversa(e.via)}\n${INSTRUCOES_FERRAMENTAS}${mcpExterno?.ferramentas.length ? `\n${INSTRUCOES_DADO_EXTERNO}` : ''}`;
         const r = (
           await cerebro.pensarComFerramentas(instrucoes, pergunta.slice(0, 2000), ferramentas, async (nome, args, ms) => {
@@ -100,6 +108,7 @@ export async function responderConversa(
           }, {
             // item 792: LoopGuard interrompe ciclo/excesso/sem progresso e registra na auditoria
             loopGuard: regras.loop_guard,
+            taint,
             aoLoop: (v) => registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'loop_guard', detalhes: { padrao: v.padrao, tool: v.tool ?? null, motivo: v.motivo } }),
           })
         ).trim();

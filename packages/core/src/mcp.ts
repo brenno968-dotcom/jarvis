@@ -11,6 +11,7 @@ import { salvarPlano } from './maestro/orquestrador.ts';
 import { validarPlano } from './maestro/plano.ts';
 import { aplicarKitBase, kitDaEmpresa } from './kit.ts';
 import { lembrar, ORIGENS_MEMORIA, recordar } from './memoria/memoria.ts';
+import { auditoriaDeInjecao } from './seguranca/taint.ts';
 import { resumirCustos } from './maestro/telemetria.ts';
 import { redator } from './redacao.ts';
 
@@ -248,7 +249,7 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
     }
     case 'jarvis_memoria_buscar': {
       const a = argsMemoriaBuscar.parse(args);
-      const trechos = await recordar(banco, a.consulta, { empresaId: a.empresa_id, negocioId: a.negocio_id, origem: a.origem }, a.limite);
+      const trechos = await recordar(banco, a.consulta, { empresaId: a.empresa_id, negocioId: a.negocio_id, origem: a.origem }, a.limite, { aoDetectar: auditoriaDeInjecao(banco, 'mcp-jarvis') });
       return { total: trechos.length, trechos };
     }
     case 'jarvis_memoria_gravar': {
@@ -262,7 +263,7 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
         empresaId: a.empresa_id,
         negocioId: a.negocio_id,
         metadados: a.metadados,
-      });
+      }, { aoDetectar: auditoriaDeInjecao(banco, 'mcp-jarvis') });
     }
     case 'jarvis_custos': {
       const a = argsCustos.parse(args);

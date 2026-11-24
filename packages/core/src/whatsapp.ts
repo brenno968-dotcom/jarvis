@@ -12,6 +12,7 @@ import type { Cerebro } from './maestro/cerebro.ts';
 import type { MensagemParaBreno } from './avisos.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
 import type { FerramentasMcp } from './mcp-cliente/ponte.ts';
+import { auditoriaDeInjecao, tratarConteudoExterno } from './seguranca/taint.ts';
 
 /** Eventos que o Nexus manda para o Jarvis (contrato em docs/INTEGRACAO-NEXUS.md). */
 export const esquemaEventoNexus = z.discriminatedUnion('tipo', [
@@ -100,5 +101,7 @@ export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: 
     }
     return { tipo: 'emergencia', canceladas: await pararTudo(banco, 'whatsapp:breno', comando) };
   }
+  // item 815: mensagem de terceiro nunca vira ordem; se tiver cara de injeção, audita (só trecho redigido) antes de ignorar
+  if (!numeroAutorizado(regras, e.numero)) await tratarConteudoExterno('whatsapp:terceiro', e.texto, auditoriaDeInjecao(banco, 'whatsapp'));
   return { tipo: 'ignorado', motivo: 'texto sem comando' };
 }

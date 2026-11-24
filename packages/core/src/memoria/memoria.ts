@@ -4,6 +4,9 @@ import { createHash } from 'node:crypto';
 import type { Consultavel } from '../banco.ts';
 import { dividirEmTrechos, type OpcoesChunker } from './chunker.ts';
 import { provedorEmbeddingsDoAmbiente, type ProvedorEmbeddings } from './embeddings.ts';
+import { escanearInjecao } from '../seguranca/injecao.ts';
+import { marcarTaint, type AoDetectarInjecao, type OrigemConteudo } from '../seguranca/taint.ts';
+import { redator } from '../redacao.ts';
 
 export const ORIGENS_MEMORIA = ['conversa', 'documento', 'gmail', 'tarefa', 'plano', 'outro'] as const;
 export type OrigemMemoria = (typeof ORIGENS_MEMORIA)[number];
@@ -15,9 +18,13 @@ export interface EntradaMemoria {
   empresaId?: string | null;
   negocioId?: string | null;
   metadados?: Record<string, unknown>;
+  /** Origem do conteúdo para o taint (item 815). Padrão: gmail/documento = externo; o resto = sistema. */
+  origemTaint?: OrigemConteudo;
 }
 
 export interface OpcoesMemoria {
+  /** Item 815: auditoria de cada detecção de injeção ao gravar/recuperar (sem o texto inteiro). */
+  aoDetectar?: AoDetectarInjecao;
   /** Padrão: Voyage pela env VOYAGE_API_KEY; sem chave, grava e busca só por full-text. */
   provedor?: ProvedorEmbeddings | null;
   chunker?: OpcoesChunker;
@@ -70,7 +77,24 @@ async function tentarEmbutir(p: ProvedorEmbeddings | undefined, textos: string[]
   }
 }
 
+/** Origens cujo conteúdo vem de fora (e-mail, documento recebido). */
+const ORIGENS_EXTERNAS: readonly OrigemMemoria[] = ['gmail', 'documento'];
+
+async function detectar(o: OpcoesMemoria, fonte: string, origem: OrigemConteudo, r: ReturnType<typeof escanearInjecao>): Promise<void> {
+  if (r.nivel === 'limpo' || !o.aoDetectar) return;
+  try {
+    await o.aoDetectar({ fonte, origem, nivel: r.nivel, motivos: r.motivos, trechos: r.achados.slice(0, 3).map((a) => redator.redigir(a.trecho).slice(0, 120)), desfecho: 'detectado' });
+  } catch {
+    /* auditoria não derruba a memória */
+  }
+}
+
 export async function lembrar(banco: Consultavel, e: EntradaMemoria, o: OpcoesMemoria = {}): Promise<ResultadoLembrar> {
+  // item 815: marca o taint nos metadados e grava o texto neutralizado (conteúdo útil preservado)
+  const origemTaint = e.origemTaint ?? (ORIGENS_EXTERNAS.includes(e.origem) ? 'externo' : 'sistema');
+  const marca = marcarTaint(e.texto, origemTaint);
+  await detectar(o, `memoria:gravar:${e.origem}`, origemTaint, marca.resultado);
+  e = { ...e, texto: marca.resultado.texto, metadados: { ...e.metadados, taint: marca.taint } };
   const trechos = dividirEmTrechos(e.texto, o.chunker);
   if (!trechos.length) throw new Error('texto vazio: nada para lembrar');
   const vetores = await tentarEmbutir(resolverProvedor(o), trechos, 'documento');
@@ -101,5 +125,16 @@ export async function recordar(banco: Consultavel, consulta: string, filtros: Fi
        from memoria_buscar($1::text, $2::vector, $3::uuid, $4::uuid, $5::text, $6::int)`,
     [q, v ? literalVetor(v) : null, filtros.empresaId ?? null, filtros.negocioId ?? null, filtros.origem ?? null, limite],
   );
-  return r.rows;
+  // item 815: memória recuperada é dado, não ordem: reescaneia (a memória pode ser anterior ao scanner ou ter sido
+  // contaminada), neutraliza e herda o pior nível entre o que foi gravado e o que o scanner vê agora.
+  const saida: TrechoRecordado[] = [];
+  for (const t of r.rows) {
+    const novo = escanearInjecao(t.texto);
+    const antigo = (t.metadados?.taint ?? {}) as { origem?: OrigemConteudo; nivel?: 'limpo' | 'suspeito' | 'malicioso'; motivos?: string[] };
+    const nivel = antigo.nivel === 'malicioso' || novo.nivel === 'malicioso' ? 'malicioso' : antigo.nivel === 'suspeito' || novo.nivel === 'suspeito' ? 'suspeito' : 'limpo';
+    const motivos = [...new Set([...(antigo.motivos ?? []), ...novo.motivos])];
+    await detectar(o, `memoria:recordar:${t.origem}`, 'externo', { ...novo, nivel, motivos });
+    saida.push({ ...t, texto: novo.texto, metadados: { ...t.metadados, taint: { origem: antigo.origem ?? 'externo', nivel, motivos } } });
+  }
+  return saida;
 }

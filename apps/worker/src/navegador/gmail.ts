@@ -1,5 +1,5 @@
 // Leitura de códigos de verificação no Gmail (seção 21). Só leitura (gmail.readonly).
-import { requisitarJson } from '@jarvis/core';
+import { combinarResultados, escanearInjecao, requisitarJson, tratarConteudoExterno, type AoDetectarInjecao, type NivelInjecao, type ResultadoInjecao } from '@jarvis/core';
 
 export interface MensagemEmail {
   id: string;
@@ -7,6 +7,8 @@ export interface MensagemEmail {
   recebidaEm: number; // ms
   assunto: string;
   corpo: string;
+  /** Item 815: e-mail é dado externo. Corpo e assunto já vêm neutralizados; aqui o risco medido (ausente = não medido). */
+  injecao?: { nivel: NivelInjecao; motivos: string[] };
 }
 
 export interface ClienteGmail {
@@ -76,13 +78,17 @@ interface ParteGmail {
   parts?: ParteGmail[];
 }
 
-function textoDe(p: ParteGmail | undefined): string {
+/** `achados` recebe o scan do HTML cru de cada parte (HTML oculto só aparece antes de tirar as tags). */
+function textoDe(p: ParteGmail | undefined, achados: ResultadoInjecao[] = []): string {
   if (!p) return '';
   if (p.body?.data && (p.mimeType?.startsWith('text/') ?? true)) {
     const t = decodificar(p.body.data);
-    return p.mimeType === 'text/html' ? t.replace(/<[^>]+>/g, ' ') : t;
+    if (p.mimeType !== 'text/html') return t;
+    const r = escanearInjecao(t);
+    achados.push(r);
+    return r.texto.replace(/<[^>]+>/g, ' ');
   }
-  return (p.parts ?? []).map(textoDe).join('\n');
+  return (p.parts ?? []).map((x) => textoDe(x, achados)).join('\n');
 }
 
 /**
@@ -94,6 +100,8 @@ export function criarClienteGmail(o: {
   clientSecret: string;
   refreshToken: string;
   fetchImpl?: typeof fetch;
+  /** Item 815: auditoria de cada e-mail com sinal de injeção (sem o texto inteiro). */
+  aoDetectarInjecao?: AoDetectarInjecao;
 }): ClienteGmail {
   let acesso: { token: string; expira: number } | undefined;
   async function token() {
@@ -130,7 +138,27 @@ export function criarClienteGmail(o: {
           payload: ParteGmail & { headers?: { name: string; value: string }[] };
         }>(`${API}/messages/${id}?format=full`, { token: tk, fetchImpl: o.fetchImpl });
         const cab = (n: string) => m.payload.headers?.find((h) => h.name.toLowerCase() === n)?.value ?? '';
-        saida.push({ id, remetente: cab('from'), assunto: cab('subject'), recebidaEm: Number(m.internalDate), corpo: textoDe(m.payload) });
+        const achados: ResultadoInjecao[] = [];
+        const bruto = textoDe(m.payload, achados);
+        const corpo = await tratarConteudoExterno('gmail', bruto, o.aoDetectarInjecao);
+        const assunto = await tratarConteudoExterno('gmail:assunto', cab('subject'), o.aoDetectarInjecao);
+        for (const r of achados) {
+          if (r.nivel === 'limpo') continue;
+          try {
+            await o.aoDetectarInjecao?.({ fonte: 'gmail:html', origem: 'externo', nivel: r.nivel, motivos: r.motivos, trechos: r.achados.slice(0, 3).map((a) => a.trecho), desfecho: 'detectado' });
+          } catch {
+            /* auditoria não derruba a leitura */
+          }
+        }
+        const junto = combinarResultados([...achados, corpo.resultado, assunto.resultado]);
+        saida.push({
+          id,
+          remetente: cab('from'),
+          assunto: assunto.texto,
+          recebidaEm: Number(m.internalDate),
+          corpo: corpo.texto,
+          injecao: { nivel: junto.nivel, motivos: junto.motivos },
+        });
       }
       return saida;
     },

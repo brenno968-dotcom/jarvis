@@ -5,6 +5,7 @@ import { registrarAuditoria } from '../auditoria.ts';
 import { log } from '../log.ts';
 import { redator } from '../redacao.ts';
 import type { Regras } from '../regras.ts';
+import { auditoriaDeInjecao } from '../seguranca/taint.ts';
 import { carregarConfigMcp, resolverServidoresMcp, type ConfigServidoresMcp, type ServidorMcpResolvido } from './config.ts';
 import { prepararFerramentasMcp, solicitadorDeAprovacao, type FerramentasMcp } from './ponte.ts';
 import type { ClienteMcp } from './cliente.ts';
@@ -61,6 +62,7 @@ export function criarProvedorMcp(o: OpcoesProvedorMcp): ProvedorMcp {
         criarCliente: o.criarCliente,
         solicitarAprovacao: solicitadorDeAprovacao(o.db, o.regras),
         aoUsar: (e) => registrarAuditoria(o.db, { quem: 'mcp-cliente', acao: 'mcp_tool_usada', detalhes: { ...e } }),
+        aoDetectarInjecao: auditoriaDeInjecao(o.db, 'mcp-cliente'),
       });
       if (mcp.falhas.length) log('aviso', 'servidor MCP indisponível', { falhas: mcp.falhas });
       if (!mcp.ferramentas.length) {

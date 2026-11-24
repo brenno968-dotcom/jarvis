@@ -26,6 +26,8 @@ export * from './maestro/telemetria.ts';
 export * from './maestro/escada.ts';
 export * from './maestro/cerebro.ts';
 export * from './loop-guard.ts';
+export * from './seguranca/injecao.ts';
+export * from './seguranca/taint.ts';
 export * from './oferta/filtro.ts';
 export * from './oferta/rascunhos.ts';
 export * from './oferta/pagina.ts';
