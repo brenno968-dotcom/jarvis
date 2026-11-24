@@ -3,6 +3,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 import { esquemaLoopGuard } from './loop-guard.ts';
 import { esquemaModelos } from './maestro/escada.ts';
+import { esquemaFatos } from './memoria/fatos.ts';
 import { esquemaProativo } from './proativo/config.ts';
 import type { NivelSemaforo } from './tipos.ts';
 
@@ -49,6 +50,8 @@ export const esquemaRegras = z
     loop_guard: esquemaLoopGuard.default({}),
     // item 829: agente proativo (desligado por padrão)
     proativo: esquemaProativo.default({}),
+    // item 845: extrator de fatos duráveis (ligado por padrão)
+    fatos: esquemaFatos.default({}),
     emergencia: z.object({
       comando_whatsapp: z.string().min(1),
       revogar_tokens: z.array(z.string()),

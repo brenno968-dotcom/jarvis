@@ -1,4 +1,5 @@
 import {
+  agendarFatosDaTarefa,
   concluir,
   enfileirarAviso,
   GuardasPorEscopo,
@@ -12,6 +13,7 @@ import {
   type Cofre,
   type Banco,
   type ContextoExecucao,
+  type DepsFatos,
   type ProvedorSegredos,
   type Regras,
   type Resultado,
@@ -27,6 +29,8 @@ export interface DepsExecutor {
   workerId: string;
   /** Dory (Bitwarden). Sem ele, salvarSegredo recusa. */
   cofre?: Cofre;
+  /** Item 845: extrator de fatos depois de cada tarefa concluída (segundo plano). Sem ele, desligado. */
+  fatos?: DepsFatos;
   /** Só para testes: simula o worker caindo depois do efeito e antes de concluir. */
   aposEfeito?: (t: Tarefa) => Promise<void>;
 }
@@ -137,6 +141,7 @@ export async function executarTarefa(d: DepsExecutor, t: Tarefa): Promise<Tarefa
   await salvarEfeito(d.banco, t.idempotency_key, t.id, resultado);
   if (d.aposEfeito) await d.aposEfeito(t);
   await concluir(d.banco, t, d.workerId, resultado);
+  if (d.fatos) agendarFatosDaTarefa(d.fatos, t, resultado);
   // a tarefa concluiu normalmente; se o fluxo todo estagnou, o guard trava as PRÓXIMAS do mesmo escopo
   if (guarda) {
     guarda.depois(ferramenta, JSON.stringify(resultado.dados ?? resultado.mensagem ?? null));

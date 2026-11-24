@@ -105,6 +105,7 @@ modelos:
     plano: sonnet     # Maestro: JSON de plano validado
     oferta: sonnet    # produção de produto/página/anúncio
     proativo: sonnet  # item 829: agente proativo (propostas de ação)
+    fatos: haiku      # item 845: extrator de fatos duráveis (barato, roda depois de cada conversa/tarefa)
   heuristica:         # só para finalidade fora do mapa
     prompt_medio_chars: 6000      # +1 ponto
     prompt_grande_chars: 20000    # +2 pontos
@@ -147,6 +148,17 @@ proativo:
   dias_dedup: 7                   # não repropõe o mesmo (título+ação) pendente ou criado/recusado nesse prazo
   expira_em_horas: 24             # validade do pedido de aprovação de cada proposta
   teto_custo_mensal_brl: 50       # gasto do próprio agente (llm_chamadas, finalidade proativo); acima disso não roda
+
+# Item 845: extrator de fatos duráveis. Depois de cada conversa e de cada tarefa concluída, a IA (Haiku) tira fatos curtos
+# (preferência, decisão, negócio, cliente, regra) e grava na memória. Nunca grava segredo/CPF/telefone/cartão; fato vindo de
+# conteúdo externo entra com taint e confiança reduzida e nunca como preferência/regra do Breno. Não bloqueia a resposta.
+fatos:
+  ligado: true
+  limiar_confianca: 0.6        # abaixo disso o fato é descartado (depois do fator de taint)
+  max_fatos_por_texto: 5
+  tamanho_min_texto: 25        # texto menor que isso nem chama a IA ("ok", "valeu")
+  fator_taint: 0.7             # multiplica a confiança de fato derivado de conteúdo externo
+  similaridade_dedup: 0.8      # parecido o bastante para contar como o mesmo fato (só atualiza visto_em/contagem)
 
 emergencia:
   comando_whatsapp: "PARA TUDO"

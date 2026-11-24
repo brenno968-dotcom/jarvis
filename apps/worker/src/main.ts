@@ -79,6 +79,9 @@ async function principal(): Promise<void> {
   // Item 829: agente proativo (só roda com `proativo.ligado` e chave da IA; a escada manda a finalidade `proativo` para o Sonnet).
   const cerebroProativo = chaveIa && regras.proativo.ligado ? criarCerebroAnthropic({ chave: chaveIa, modelo: process.env.JARVIS_MODELO_IA, escada: regras.modelos, loopGuard: regras.loop_guard, gravador: criarGravadorBanco(banco), contexto: { finalidade: 'proativo' } }) : undefined;
 
+  // Item 845: extrator de fatos duráveis das tarefas concluídas (finalidade `fatos` = Haiku na escada).
+  const fatos = chaveIa && regras.fatos.ligado ? { banco, config: regras.fatos, cerebro: criarCerebroAnthropic({ chave: chaveIa, modelo: process.env.JARVIS_MODELO_IA, escada: regras.modelos, loopGuard: regras.loop_guard, gravador: criarGravadorBanco(banco), contexto: { finalidade: 'fatos' } }), aoDetectar: auditoriaDeInjecao(banco, 'fatos') } : undefined;
+
   // Gmail (códigos de verificação) e aviso instantâneo.
   let gmail: ClienteGmail | undefined;
   const gId = await opcional('JARVIS_CORE_GMAIL_CLIENT_ID');
@@ -131,7 +134,7 @@ async function principal(): Promise<void> {
 
   log('info', 'worker iniciado', { workerId, adaptadores: registro.todos().map((a) => a.plataforma) });
   await rodar(
-    { banco, regras, registro, segredos, workerId, notificar, segredoAprovacao, cofre, mcp, testarChaves: true, maestro: true, rotinas: true, cerebroProativo, extras },
+    { banco, regras, registro, segredos, workerId, notificar, segredoAprovacao, cofre, mcp, testarChaves: true, maestro: true, rotinas: true, cerebroProativo, fatos, extras },
     controle.signal,
   );
   await banco.end();
