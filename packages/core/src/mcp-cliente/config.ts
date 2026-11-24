@@ -25,6 +25,12 @@ export const esquemaServidoresMcp = z.object({
       timeout_ms: z.number().int().min(1000).max(300_000).default(30_000),
       /** Allowlist obrigatória e não vazia. */
       tools: z.array(nomeTool).min(1, 'a allowlist de tools é obrigatória'),
+      /** Timeout por tool (ms), para as lentas (ex.: deep_research 600000). Sem entrada, vale `timeout_ms`. */
+      timeouts_ms: z.record(nomeTool, z.number().int().min(1000).max(900_000)).default({}),
+    }).superRefine((s, ctx) => {
+      for (const t of Object.keys(s.timeouts_ms)) {
+        if (!s.tools.includes(t)) ctx.addIssue({ code: 'custom', path: ['timeouts_ms', t], message: 'timeout para tool que não está na allowlist' });
+      }
     }),
   ),
 });
@@ -38,6 +44,8 @@ export interface ServidorMcpResolvido {
   token?: string;
   timeoutMs: number;
   tools: string[];
+  /** Timeout específico por tool (ms). */
+  timeoutsPorTool?: Record<string, number>;
 }
 
 export class ConfigMcpInvalida extends Error {
@@ -71,9 +79,14 @@ export function resolverServidoresMcp(config: ConfigServidoresMcp, env: Record<s
     const url = env[s.url_env]?.trim();
     if (!url) continue;
     const token = s.token_env ? env[s.token_env]?.trim() || undefined : undefined;
-    saida.push({ nome, descricao: s.descricao, url, ...(token ? { token } : {}), timeoutMs: s.timeout_ms, tools: [...new Set(s.tools)] });
+    saida.push({ nome, descricao: s.descricao, url, ...(token ? { token } : {}), timeoutMs: s.timeout_ms, tools: [...new Set(s.tools)], timeoutsPorTool: { ...s.timeouts_ms } });
   }
   return saida;
+}
+
+/** Timeout da tool: o específico (`timeouts_ms`) ou o do servidor. */
+export function timeoutDaTool(s: Pick<ServidorMcpResolvido, 'timeoutMs' | 'timeoutsPorTool'>, tool: string): number {
+  return s.timeoutsPorTool?.[tool] ?? s.timeoutMs;
 }
 
 /** Nome da ação no semáforo do regras.yaml: mcp_<servidor>_<tool>, minúscula com "_". */

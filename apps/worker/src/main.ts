@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import {
+  carregarConfigMcp,
   carregarRegras,
   criarBanco,
   log,
@@ -11,8 +12,10 @@ import {
   criarGravadorBanco,
   executarSeVencida,
   RegrasInvalidas,
+  resolverServidoresMcp,
   type Cofre,
   type Notificador,
+  type ServidorMcpResolvido,
 } from '@jarvis/core';
 import { criarAdaptadorMetaAds } from './adaptadores/meta-ads.ts';
 import { criarAdaptadorOferta } from './adaptadores/oferta.ts';
@@ -105,6 +108,16 @@ async function principal(): Promise<void> {
     }
   } else log('aviso', 'navegador na nuvem desligado: plataformas sem API ficam sem adaptador');
 
+  // Item 793: tools MCP externas aprovadas pelo Breno (executa uma vez). Sem config/URL neste worker, desligado.
+  let mcp: { servidores: ServidorMcpResolvido[] } | undefined;
+  try {
+    const servidores = resolverServidoresMcp(carregarConfigMcp());
+    if (servidores.length) mcp = { servidores };
+    else log('aviso', 'MCP externo desligado neste worker: nenhuma URL configurada');
+  } catch (e) {
+    log('aviso', 'MCP externo desligado neste worker: config ilegível', { erro: String(e).slice(0, 300) });
+  }
+
   const extras = async () => {
     if (gmail?.renovarWatch && topicoGmail) {
       // Seção 21: renovar diariamente (a assinatura dura no máximo 7 dias e para sem erro).
@@ -114,7 +127,7 @@ async function principal(): Promise<void> {
 
   log('info', 'worker iniciado', { workerId, adaptadores: registro.todos().map((a) => a.plataforma) });
   await rodar(
-    { banco, regras, registro, segredos, workerId, notificar, segredoAprovacao, cofre, testarChaves: true, maestro: true, rotinas: true, extras },
+    { banco, regras, registro, segredos, workerId, notificar, segredoAprovacao, cofre, mcp, testarChaves: true, maestro: true, rotinas: true, extras },
     controle.signal,
   );
   await banco.end();

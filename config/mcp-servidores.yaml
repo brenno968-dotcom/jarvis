@@ -19,6 +19,13 @@ servidores:
       - file_read
       - memory_search
       - memory_retrieve
+      - deep_research # amarelo: gasta tokens, até 10 min; só roda depois da aprovação do Breno
+      - morning_digest # verde
+    # Timeout por tool (ms). Sem entrada, vale timeout_ms. Na conversa o prazo do laço (20 s) continua mandando;
+    # o valor cheio vale na execução depois da aprovação (worker).
+    timeouts_ms:
+      deep_research: 600000
+      morning_digest: 600000
 
   # Desligado por padrão. O Nexus já tem o cliente próprio assinado por HMAC (nexus-mcp.ts, usado na conversa);
   # só ligue esta entrada se o /api/mcp do Nexus passar a aceitar token Bearer.

@@ -11,6 +11,7 @@ import { responderConversa } from './conversa.ts';
 import type { Cerebro } from './maestro/cerebro.ts';
 import type { MensagemParaBreno } from './avisos.ts';
 import type { ClienteNexusMcp } from './nexus-mcp.ts';
+import type { FerramentasMcp } from './mcp-cliente/ponte.ts';
 
 /** Eventos que o Nexus manda para o Jarvis (contrato em docs/INTEGRACAO-NEXUS.md). */
 export const esquemaEventoNexus = z.discriminatedUnion('tipo', [
@@ -60,6 +61,8 @@ export interface DepsEventoNexus {
   avisarAgora?: (m: MensagemParaBreno) => Promise<{ numeros: string[]; emails: string[] }>;
   /** item 416: ferramentas do Nexus na conversa (Quadro, Atlas, saúde, banco só leitura) */
   nexus?: ClienteNexusMcp | null;
+  /** item 793: ferramentas de servidores MCP externos (cache por processo; nunca lança, sem MCP devolve null) */
+  mcp?: { obter(): Promise<Pick<FerramentasMcp, 'ferramentas' | 'executar'> | null> } | null;
 }
 
 export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: unknown, deps: DepsEventoNexus = {}): Promise<ResultadoEvento> {
@@ -73,7 +76,8 @@ export async function processarEventoNexus(banco: Banco, regras: Regras, bruto: 
   }
 
   if (e.tipo === 'conversa') {
-    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null, deps.nexus ?? null);
+    const mcpExterno = e.via === 'numero' && deps.cerebro && deps.mcp && numeroAutorizado(regras, e.numero) ? await deps.mcp.obter().catch(() => null) : null;
+    const r = await responderConversa(banco, regras, e, deps.cerebro ?? null, deps.nexus ?? null, mcpExterno);
     return 'resposta' in r ? { tipo: 'conversa', resposta: r.resposta } : { tipo: 'ignorado', motivo: r.ignorado };
   }
 

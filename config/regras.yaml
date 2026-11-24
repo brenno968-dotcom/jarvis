@@ -25,6 +25,7 @@ semaforo:
     - mcp_openjarvis_file_read
     - mcp_openjarvis_memory_search
     - mcp_openjarvis_memory_retrieve
+    - mcp_openjarvis_morning_digest
     - mcp_nexus_pedidos_buscar_parecidos
     - mcp_nexus_pedidos_listar
     - mcp_nexus_pedidos_ver
@@ -39,6 +40,8 @@ semaforo:
     - reaplicar_segredo
     - ajustar_campanha_dentro_orcamento
     - abrir_sessao_nexus
+    # item 793 (parte 2): gasta tokens (até 10 min); executa só depois da aprovação
+    - mcp_openjarvis_deep_research
     - mcp_nexus_pedidos_criar
     - mcp_nexus_pedidos_atualizar
     - mcp_nexus_atlas_gravar
