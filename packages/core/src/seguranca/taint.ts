@@ -9,6 +9,7 @@ import type { Consultavel } from '../banco.ts';
 import { criarAprovacao } from '../aprovacoes.ts';
 import { registrarAuditoria } from '../auditoria.ts';
 import { enfileirarAviso } from '../avisos.ts';
+import { FERRAMENTAS_COM_SAIDA_DE_REDE, FERRAMENTAS_LOCAIS, FERRAMENTAS_LOCAIS_EXTERNAS, NOME_WEB_ABRIR } from '../ferramentas/nomes.ts';
 import { acaoDaTool, nivelDaTool, separarNomeNaApi } from '../mcp-cliente/config.ts';
 import { redator } from '../redacao.ts';
 import { classificarAcao, type Regras } from '../regras.ts';
@@ -107,12 +108,29 @@ export function toolSensivelPeloNome(nome: string): boolean {
 export function nivelDaToolConversa(regras: Regras, nome: string): NivelSemaforo {
   // item 793 (skills): tool interna que só carrega texto e restringe ferramentas (ação `usar_skill` no semáforo)
   if (nome === 'usar_skill') return classificarAcao(regras, 'usar_skill');
+  // item 852: ferramentas locais (meta_metricas, web_abrir): a ação no semáforo tem o próprio nome da tool
+  if (FERRAMENTAS_LOCAIS.has(nome)) return classificarAcao(regras, nome);
   const p = separarNomeNaApi(nome);
   return p ? nivelDaTool(regras, p.servidor, p.tool) : nivelDaTool(regras, 'nexus', nome);
 }
 
+/** O endereço (URL inteira ou site) foi escrito pelo Breno na pergunta? */
+export function enderecoCitadoNaPergunta(url: unknown, pergunta: string): boolean {
+  if (typeof url !== 'string' || !url) return false;
+  const p = pergunta.toLowerCase();
+  const u = url.trim().toLowerCase();
+  if (p.includes(u) || p.includes(u.replace(/^https?:\/\//, '').replace(/\/$/, ''))) return true;
+  try {
+    return p.includes(new URL(url).hostname.toLowerCase().replace(/^www\./, ''));
+  } catch {
+    return false;
+  }
+}
+
 /** Tool que o Breno pediu, na falta de uma regra melhor: o nome exato aparece na pergunta, ou todos os radicais do nome. */
-export function ferramentaPedidaNaPergunta(nome: string, pergunta: string): boolean {
+export function ferramentaPedidaNaPergunta(nome: string, pergunta: string, args: Record<string, unknown> = {}): boolean {
+  // item 852: web_abrir só vale como "pedida" se o endereço (ou o site) aparece na pergunta do Breno
+  if (nome === NOME_WEB_ABRIR) return enderecoCitadoNaPergunta(args.url, pergunta);
   const base = (separarNomeNaApi(nome)?.tool ?? nome).toLowerCase();
   const p = pergunta.toLowerCase();
   if (!base || !p) return false;
@@ -165,7 +183,7 @@ export class RastroTaint {
   }
 
   private ehExterna(nome: string): boolean {
-    return this.o.fonteExterna ? this.o.fonteExterna(nome) : nome.startsWith('mcp__');
+    return this.o.fonteExterna ? this.o.fonteExterna(nome) : nome.startsWith('mcp__') || FERRAMENTAS_LOCAIS_EXTERNAS.has(nome);
   }
 
   /**
@@ -175,7 +193,7 @@ export class RastroTaint {
    */
   async registrarResultado(nome: string, saida: string): Promise<string> {
     const origem: OrigemConteudo = this.ehExterna(nome) ? 'externo' : 'sistema';
-    const fonte = separarNomeNaApi(nome) ? `mcp:${separarNomeNaApi(nome)!.servidor}/${separarNomeNaApi(nome)!.tool}` : `nexus:${nome}`;
+    const fonte = separarNomeNaApi(nome) ? `mcp:${separarNomeNaApi(nome)!.servidor}/${separarNomeNaApi(nome)!.tool}` : FERRAMENTAS_LOCAIS.has(nome) ? `local:${nome}` : `nexus:${nome}`;
     const cab = CABECALHO_EXTERNO.exec(saida);
     if (cab) {
       const m = /\binjecao="(suspeito|malicioso)"/.exec(cab[1] ?? '');
@@ -193,10 +211,11 @@ export class RastroTaint {
   /** Decide se uma tool pode executar agora, dado tudo o que já entrou no contexto. */
   async avaliar(nome: string, args: Record<string, unknown>): Promise<VeredictoTaint> {
     const nivelTool = this.o.nivelDaTool(nome);
-    const sensivel = nivelTool !== 'verde' || toolSensivelPeloNome(nome);
+    // item 852: tool de leitura com saída de rede (web_abrir) vira canal de vazamento se o destino vier de conteúdo externo
+    const sensivel = nivelTool !== 'verde' || toolSensivelPeloNome(nome) || FERRAMENTAS_COM_SAIDA_DE_REDE.has(nome);
     if (!sensivel) return { acao: 'executar' };
     const nivel = this.nivel;
-    const pedida = (this.o.pedidaPeloBreno ?? ((n, _a, p) => ferramentaPedidaNaPergunta(n, p)))(nome, args, this.o.pergunta);
+    const pedida = (this.o.pedidaPeloBreno ?? ((n, a, p) => ferramentaPedidaNaPergunta(n, p, a)))(nome, args, this.o.pergunta);
     if (nivel === 'limpo' && (!this.temExterno || pedida)) return { acao: 'executar' };
 
     const origensRuins = this.pedacos.filter((p) => p.origem !== 'breno' && (p.nivel !== 'limpo' || p.origem === 'externo'));

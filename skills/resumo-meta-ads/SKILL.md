@@ -4,6 +4,7 @@ description: >-
   Lê as métricas de campanhas de anúncios (Meta Ads) e resume o desempenho em gasto, cliques, leads, vendas, CPA e retorno (ROAS), sugerindo ajustes para o Breno decidir. Use quando ele pedir "como estão os anúncios", "resumo da campanha" ou "o que ajustar no Meta". Só leitura e sugestão: nunca altera campanha nem orçamento.
 license: Proprietary
 ferramentas_permitidas:
+  - meta_metricas
   - atlas_buscar
   - banco_tabelas
   - banco_consultar
@@ -11,7 +12,7 @@ risco: verde
 origem: interna
 metadata:
   autor: jarvis
-  versao: "1.0"
+  versao: "1.1"
 ---
 # Resumo de Meta Ads
 
@@ -19,7 +20,7 @@ Objetivo: dizer, com números, como a campanha está e o que vale ajustar. Esta 
 
 ## Passos
 
-1. Pegue as métricas: use as que o Breno colou; se não houver, procure no banco do Nexus (veja as colunas com `banco_tabelas`, depois um SELECT agregado com `banco_consultar`) e no Atlas (`atlas_buscar`: metas e decisões anteriores da campanha). Sem dado, diga que não achou e peça o período e os números.
+1. Pegue as métricas: use as que o Breno colou; se não houver, chame `meta_metricas` (padrão últimos 7 dias, máximo 90; `nivel` conta, campanha, conjunto ou anuncio; lê do banco do Jarvis e só vai à Meta se faltar dado; somente leitura) e confira as metas e decisões anteriores no Atlas (`atlas_buscar`). Se precisar de algo que a ferramenta não traz, `banco_tabelas` e `banco_consultar` (só SELECT). Sem dado, diga que não achou e peça o período e os números.
 2. Para cada campanha ou conjunto, calcule: CTR = cliques / impressões, CPC = gasto / cliques, CPL = gasto / leads, CPA = gasto / vendas, ROAS = receita / gasto.
 3. Compare com a meta combinada (preço do produto, ROAS mínimo, gasto mínimo para concluir). Se o gasto ainda é pequeno para concluir, diga "esperar" em vez de sugerir mudança.
 4. Classifique cada item: **manter**, **esperar mais dado**, **candidata a pausar** (gastou além do mínimo sem vender ou ROAS abaixo do mínimo) ou **candidata a escalar** (ROAS acima da meta com volume).

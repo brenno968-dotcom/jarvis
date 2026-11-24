@@ -3,6 +3,10 @@
 > Atualizado em 10/11/2026, ao fim da sessão feita na conversa do claude.ai (Projeto NEXUS).
 > Quem continuar: leia `CLAUDE.md`, `docs/JARVIS.md` e este arquivo inteiro antes de mexer em qualquer coisa.
 
+## 000000000. Atualização de 24/11/2026: ferramentas de leitura da conversa (item 852)
+
+- `packages/core/src/ferramentas/`: `meta_metricas` (lê `metricas_campanha` do banco; só vai à Graph API, com GET de insights, se faltar dado ou for conjunto/anúncio/alcance/frequência; máx. 90 dias) e `web_abrir` (GET com proteção SSRF, 2 MB, 10 s, 3 redirects, 20 mil caracteres, resultado como dado externo com scanner/taint); as duas são verdes no `regras.yaml`, entram na conversa (WhatsApp/painel) e nas skills `resumo-meta-ads`, `web-summarize` e `topic-research`. Testes: `test/ferramentas-meta-web.test.ts`. O painel precisa de `JARVIS_CORE_META_ADS_TOKEN` para a leitura na Meta (sem ele só lê o banco).
+
 ## 00000000. Atualização de 24/11/2026: extrator de fatos duráveis (item 845)
 
 - `packages/core/src/memoria/fatos.ts`: depois de cada conversa (número autorizado) e de cada tarefa concluída, o Haiku (finalidade `fatos`) extrai fatos curtos e os grava em `memoria_trechos` (`metadados.tipo = 'fato'`); sem segredo/CPF/telefone/cartão, fato externo com taint e sem virar preferência/regra, dedup e substituição só nos metadados; tool MCP `jarvis_fatos`; config `fatos:` no `regras.yaml`; **migration 0015 (grant de update em metadados) ainda não aplicada em produção**.

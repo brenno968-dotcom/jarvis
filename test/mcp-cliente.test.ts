@@ -288,7 +288,7 @@ describe('ponte com o cérebro', () => {
     const banco = { query: async () => ({ rows: [], rowCount: 0 }) } as never;
     const r = await responderConversa(banco, comNumerosDoAmbiente(regras, numero), { numero, texto: 'Jarvis, pesquise', via: 'numero' }, cerebro, null, p);
     expect(r).toEqual({ resposta: 'feito' });
-    expect(nomes).toEqual(['mcp__falso__web_search']);
+    expect(nomes).toEqual(['mcp__falso__web_search', 'meta_metricas', 'web_abrir']);
     expect(saida).toContain('nao_confiavel');
   });
 });

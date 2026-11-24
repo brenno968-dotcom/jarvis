@@ -618,7 +618,7 @@ describe('skills na conversa (responderConversa)', () => {
     expect(r).toEqual({ resposta: 'feito' });
     expect(sistema).toContain('- so-leitura: Faz uma tarefa de teste.');
     expect(sistema).not.toContain(MARCA_CORPO);
-    expect(nomesIniciais).toEqual(['pedidos_listar', 'atlas_buscar', 'usar_skill']);
+    expect(nomesIniciais).toEqual(['pedidos_listar', 'atlas_buscar', 'meta_metricas', 'web_abrir', 'usar_skill']);
     expect(carga).toContain(MARCA_CORPO);
     expect(fora).toMatch(/fora do escopo/);
     const detalhes = JSON.stringify(auditoria);
@@ -637,7 +637,7 @@ describe('skills na conversa (responderConversa)', () => {
     };
     const nexus = { ferramentas: async () => [tool('pedidos_listar')], chamar: async () => 'ok' };
     await responderConversa(banco, regras, { numero, texto: 'Jarvis, oi', via: 'numero' }, cerebro, nexus, null, null, null);
-    expect(nomes).toEqual(['pedidos_listar']);
+    expect(nomes).toEqual(['pedidos_listar', 'meta_metricas', 'web_abrir']); // item 852: ferramentas locais só de leitura
     nomes = null;
     const d = pastaTemp();
     criarSkill(d, 'a', skillMd('a'));
