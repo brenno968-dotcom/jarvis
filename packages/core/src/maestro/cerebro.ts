@@ -1,14 +1,16 @@
 // "Cérebro" do Maestro: transforma o comando do Breno num plano (seção 24, Maestro).
 // A IA só PROPÕE: o plano passa pela validação (seção 11) e pela aprovação do Breno.
-import { requisitarJson } from '../http.ts';
+import { ErroHttp, requisitarJson } from '../http.ts';
 import type { FerramentaIa } from '../nexus-mcp.ts';
 import type { Regras } from '../regras.ts';
 import { ROTEIROS } from './modelos.ts';
 import { validarPlano, type PlanoValidado } from './plano.ts';
+import type { UsoAnthropic } from './precos.ts';
+import { montarChamada, registrarChamada, type ContextoLlm, type GravadorLlm } from './telemetria.ts';
 
 export interface Cerebro {
   /** Devolve o texto da resposta da IA (deve conter um JSON de plano). */
-  pensar(sistema: string, mensagens: { role: 'user' | 'assistant'; content: string }[]): Promise<string>;
+  pensar(sistema: string, mensagens: { role: 'user' | 'assistant'; content: string }[], contexto?: ContextoLlm): Promise<string>;
   /** Item 416 (parte 2): conversa usando ferramentas (tool use), com limite de rodadas e de tempo total. */
   pensarComFerramentas?(sistema: string, pergunta: string, ferramentas: FerramentaIa[], executar: ExecutarFerramenta, o?: OpcoesFerramentas): Promise<string>;
 }
@@ -20,6 +22,8 @@ export interface OpcoesFerramentas {
   /** Tempo total em ms (padrão 20 s: o Nexus espera 25 s pela resposta da conversa). */
   prazoMs?: number;
   agora?: () => number;
+  /** Telemetria (item 791): tarefa/empresa/negócio/finalidade desta conversa. */
+  contexto?: ContextoLlm;
 }
 /** Prazo padrão da conversa com ferramentas: abaixo dos 22 s combinados (o Nexus corta em 25 s). */
 export const PRAZO_CONVERSA_MS = 20_000;
@@ -57,28 +61,86 @@ export async function lacoFerramentas(
   return 'Não consegui fechar a resposta a tempo.';
 }
 
-export function criarCerebroAnthropic(o: { chave: string; modelo?: string; fetchImpl?: typeof fetch }): Cerebro {
+export interface OpcoesCerebroAnthropic {
+  chave: string;
+  modelo?: string;
+  fetchImpl?: typeof fetch;
+  /** Telemetria por chamada (item 791). Sem gravador, nada é gravado. Falha do gravador nunca derruba a chamada. */
+  gravador?: GravadorLlm;
+  /** Contexto padrão da telemetria (a chamada pode sobrescrever). */
+  contexto?: ContextoLlm;
+  /** Relógio em ms (testes). */
+  agora?: () => number;
+}
+
+const URL_MENSAGENS = 'https://api.anthropic.com/v1/messages';
+
+/**
+ * Chama /v1/messages medindo latência e lendo `usage`; grava a telemetria em segundo plano
+ * (também quando a chamada falha) e devolve a resposta ou repete o erro original.
+ */
+async function chamarMensagens<T extends { usage?: UsoAnthropic; stop_reason?: string }>(
+  o: OpcoesCerebroAnthropic,
+  modelo: string,
+  corpo: Record<string, unknown>,
+  timeoutMs: number,
+  finalidadePadrao: string,
+  contexto?: ContextoLlm,
+): Promise<T> {
+  const agora = o.agora ?? Date.now;
+  const ini = agora();
+  const ctx = { ...o.contexto, ...contexto };
+  try {
+    const r = await requisitarJson<T>(URL_MENSAGENS, {
+      metodo: 'POST',
+      fetchImpl: o.fetchImpl,
+      cabecalhos: { 'x-api-key': o.chave, 'anthropic-version': '2023-06-01' },
+      corpo: { model: modelo, ...corpo },
+      timeoutMs,
+    });
+    void registrarChamada(o.gravador, () =>
+      montarChamada({ modelo, contexto: ctx, finalidadePadrao, uso: r?.usage, latenciaMs: agora() - ini, statusHttp: 200, stopReason: r?.stop_reason }),
+    );
+    return r;
+  } catch (e) {
+    void registrarChamada(o.gravador, () =>
+      montarChamada({
+        modelo,
+        contexto: ctx,
+        finalidadePadrao,
+        latenciaMs: agora() - ini,
+        statusHttp: e instanceof ErroHttp ? e.status : null,
+        erro: e instanceof ErroHttp ? `${e.erro.codigo}: ${e.erro.mensagem}` : String((e as Error)?.message ?? e),
+      }),
+    );
+    throw e;
+  }
+}
+
+export function criarCerebroAnthropic(o: OpcoesCerebroAnthropic): Cerebro {
   return {
-    async pensar(sistema, mensagens) {
-      const r = await requisitarJson<{ content: { type: string; text?: string }[] }>('https://api.anthropic.com/v1/messages', {
-        metodo: 'POST',
-        fetchImpl: o.fetchImpl,
-        cabecalhos: { 'x-api-key': o.chave, 'anthropic-version': '2023-06-01' },
-        corpo: { model: o.modelo ?? 'claude-sonnet-5-5', max_tokens: 8000, system: sistema, messages: mensagens },
-        timeoutMs: 120_000,
-      });
+    async pensar(sistema, mensagens, contexto) {
+      const r = await chamarMensagens<{ content: { type: string; text?: string }[]; usage?: UsoAnthropic; stop_reason?: string }>(
+        o,
+        o.modelo ?? 'claude-sonnet-5-5',
+        { max_tokens: 8000, system: sistema, messages: mensagens },
+        120_000,
+        'plano',
+        contexto,
+      );
       return r.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
     },
     async pensarComFerramentas(sistema, pergunta, ferramentas, executar, op) {
       return lacoFerramentas(
         (mensagens, timeoutMs, comFerramentas) =>
-          requisitarJson<{ content: Bloco[]; stop_reason?: string }>('https://api.anthropic.com/v1/messages', {
-            metodo: 'POST',
-            fetchImpl: o.fetchImpl,
-            cabecalhos: { 'x-api-key': o.chave, 'anthropic-version': '2023-06-01' },
-            corpo: { model: o.modelo ?? 'claude-haiku-5-5', max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
+          chamarMensagens<{ content: Bloco[]; stop_reason?: string; usage?: UsoAnthropic }>(
+            o,
+            o.modelo ?? 'claude-haiku-5-5',
+            { max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
             timeoutMs,
-          }),
+            'conversa',
+            op?.contexto,
+          ),
         pergunta,
         executar,
         op,

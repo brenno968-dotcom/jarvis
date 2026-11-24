@@ -11,6 +11,7 @@ import { salvarPlano } from './maestro/orquestrador.ts';
 import { validarPlano } from './maestro/plano.ts';
 import { aplicarKitBase, kitDaEmpresa } from './kit.ts';
 import { lembrar, ORIGENS_MEMORIA, recordar } from './memoria/memoria.ts';
+import { resumirCustos } from './maestro/telemetria.ts';
 import { redator } from './redacao.ts';
 
 export const VERSAO_PROTOCOLO_PADRAO = '2025-06-18';
@@ -108,6 +109,21 @@ export const FERRAMENTAS: Ferramenta[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'jarvis_custos',
+    description:
+      'Custos e telemetria das chamadas de IA do Jarvis (tokens, custo em USD e BRL, latência), por período e agrupados por dia, modelo ou roteiro (finalidade da chamada).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dias: { type: 'integer', minimum: 1, maximum: 366, description: 'Últimos N dias (padrão 7). Ignorado se "desde" vier.' },
+        desde: { type: 'string', description: 'Início do período (data/hora ISO 8601).' },
+        ate: { type: 'string', description: 'Fim do período, exclusivo (data/hora ISO 8601).' },
+        agrupar: { type: 'string', enum: ['dia', 'modelo', 'roteiro'], description: 'Padrão: dia. "roteiro" agrupa pela finalidade da chamada (plano, conversa...).' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 const CHAVES_SUSPEITAS = /(senha|password|passwd|secret|token|api[_-]?key|valor)/i;
@@ -148,6 +164,14 @@ const argsMemoriaGravar = z.object({
   empresa_id: z.string().uuid().optional(),
   negocio_id: z.string().uuid().optional(),
   metadados: z.record(z.unknown()).default({}),
+});
+
+const dataIso = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'data inválida (use ISO 8601)');
+const argsCustos = z.object({
+  dias: z.number().int().min(1).max(366).optional(),
+  desde: dataIso.optional(),
+  ate: dataIso.optional(),
+  agrupar: z.enum(['dia', 'modelo', 'roteiro']).default('dia'),
 });
 
 async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<string, unknown>): Promise<unknown> {
@@ -239,6 +263,10 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
         negocioId: a.negocio_id,
         metadados: a.metadados,
       });
+    }
+    case 'jarvis_custos': {
+      const a = argsCustos.parse(args);
+      return resumirCustos(banco, { dias: a.dias, desde: a.desde, ate: a.ate, agruparPor: a.agrupar === 'roteiro' ? 'finalidade' : a.agrupar });
     }
     default:
       throw new Error(`ferramenta desconhecida: ${nome}`);

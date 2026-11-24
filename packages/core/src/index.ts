@@ -21,6 +21,8 @@ export * from './mcp.ts';
 export * from './maestro/modelos.ts';
 export * from './maestro/plano.ts';
 export * from './maestro/orquestrador.ts';
+export * from './maestro/precos.ts';
+export * from './maestro/telemetria.ts';
 export * from './maestro/cerebro.ts';
 export * from './oferta/filtro.ts';
 export * from './oferta/rascunhos.ts';
