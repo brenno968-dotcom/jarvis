@@ -25,6 +25,7 @@ servidores:
     # o valor cheio vale na execução depois da aprovação (worker).
     timeouts_ms:
       deep_research: 600000
+      morning_digest: 600000
 
   # Desligado por padrão. O Nexus já tem o cliente próprio assinado por HMAC (nexus-mcp.ts, usado na conversa);
   # só ligue esta entrada se o /api/mcp do Nexus passar a aceitar token Bearer.

@@ -261,10 +261,10 @@ describe('aprovação de tool MCP amarela: executa uma única vez', () => {
 });
 
 describe('timeout por tool', () => {
-  it('deep_research 600 s; as demais herdam o do servidor', () => {
+  it('deep_research e morning_digest 600 s; as demais herdam o do servidor', () => {
     const [s] = servidores();
     expect(timeoutDaTool(s!, 'deep_research')).toBe(600_000);
-    expect(timeoutDaTool(s!, 'morning_digest')).toBe(30_000);
+    expect(timeoutDaTool(s!, 'morning_digest')).toBe(600_000);
     expect(timeoutDaTool(s!, 'web_search')).toBe(30_000);
   });
 
