@@ -18,7 +18,10 @@ default_agent = "simple"
 # git_commit, browser_*, agent_spawn...) ficam de fora e sao recusadas por
 # mcp_http.py mesmo que alguem as liste aqui.
 [tools]
-enabled = ["calculator", "think", "web_search", "file_read", "memory_search", "memory_retrieve"]
+# deep_research e morning_digest sao AGENTES: o adaptador roda o agente do OpenJarvis so com as
+# tools seguras abaixo (os agentes nao veem shell/file_write/browser/agent_spawn). Remova-os daqui
+# para desligar. O morning_digest usa internamente so `digest_collect` (sem TTS).
+enabled = ["calculator", "think", "web_search", "file_read", "memory_search", "memory_retrieve", "deep_research", "morning_digest"]
 
 [analytics]
 enabled = false
