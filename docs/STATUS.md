@@ -6,6 +6,7 @@
 ## 00000000. Atualização de 24/11/2026: extrator de fatos duráveis (item 845)
 
 - `packages/core/src/memoria/fatos.ts`: depois de cada conversa (número autorizado) e de cada tarefa concluída, o Haiku (finalidade `fatos`) extrai fatos curtos e os grava em `memoria_trechos` (`metadados.tipo = 'fato'`); sem segredo/CPF/telefone/cartão, fato externo com taint e sem virar preferência/regra, dedup e substituição só nos metadados; tool MCP `jarvis_fatos`; config `fatos:` no `regras.yaml`; **migration 0015 (grant de update em metadados) ainda não aplicada em produção**.
+- **Item 793 (skills):** `skills/<nome>/SKILL.md` (agentskills.io; loader em `packages/core/src/skills/`, tool interna `usar_skill` com divulgação progressiva e escopo que só reduz ferramentas, scanner de injeção barra a carga, `npm run skills:importar -- <url-github-ou-pasta>` importa de terceiro como `origem: externa` sem ferramentas, tool MCP `jarvis_skills`; 8 skills em pt-BR só de leitura/rascunho; Docker do painel copia `skills/` e define `JARVIS_SKILLS`).
 
 ## 0000000. Atualização de 19/11/2026: conversa com as ferramentas do Nexus (item 416, parte 2)
 

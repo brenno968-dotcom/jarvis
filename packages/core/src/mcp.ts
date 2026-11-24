@@ -15,6 +15,7 @@ import { lembrar, ORIGENS_MEMORIA, recordar } from './memoria/memoria.ts';
 import { auditoriaDeInjecao } from './seguranca/taint.ts';
 import { resumirCustos } from './maestro/telemetria.ts';
 import { redator } from './redacao.ts';
+import { carregarCatalogo, resolverDiretorioSkills } from './skills/carregador.ts';
 
 export const VERSAO_PROTOCOLO_PADRAO = '2025-06-18';
 
@@ -144,6 +145,13 @@ export const FERRAMENTAS: Ferramenta[] = [
       },
       additionalProperties: false,
     },
+  },
+  {
+    name: 'jarvis_skills',
+    description:
+      'Lista as skills do Jarvis (pastas skills/<nome>/SKILL.md, formato agentskills.io): nome, descrição, origem (interna/externa), risco, degrau do modelo e as ferramentas que cada uma pode usar. ' +
+      'Só metadados (o corpo da skill não vem aqui). "rejeitadas" = pastas que não carregam (formato inválido, nome diferente da pasta ou texto suspeito de injeção).',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
 ];
 
@@ -306,6 +314,22 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
     case 'jarvis_custos': {
       const a = argsCustos.parse(args);
       return resumirCustos(banco, { dias: a.dias, desde: a.desde, ate: a.ate, agruparPor: a.agrupar === 'roteiro' ? 'finalidade' : a.agrupar });
+    }
+    case 'jarvis_skills': {
+      const c = carregarCatalogo(resolverDiretorioSkills());
+      return {
+        total: c.skills.length,
+        skills: c.skills.map((k) => ({
+          nome: k.nome,
+          descricao: k.descricao,
+          origem: k.origem,
+          risco: k.risco,
+          finalidade: k.finalidade ?? null,
+          ferramentas_permitidas: k.ferramentas,
+          recursos: k.recursos,
+        })),
+        rejeitadas: c.rejeitadas.map((r) => ({ pasta: r.pasta, motivo: redator.redigir(r.motivo) })),
+      };
     }
     default:
       throw new Error(`ferramenta desconhecida: ${nome}`);

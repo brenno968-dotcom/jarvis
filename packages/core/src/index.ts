@@ -51,3 +51,4 @@ export * from './memoria/embeddings.ts';
 export * from './memoria/fatos.ts';
 export * from './memoria/memoria.ts';
 export * from './proativo/index.ts';
+export * from './skills/index.ts';

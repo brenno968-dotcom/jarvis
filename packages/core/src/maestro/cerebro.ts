@@ -6,7 +6,7 @@ import type { FerramentaIa } from '../nexus-mcp.ts';
 import type { Regras } from '../regras.ts';
 import { comRegraDadoExterno, REGRA_DADO_EXTERNO, type RastroTaint } from '../seguranca/taint.ts';
 import { LoopGuard, loopGuardPadrao, type ConfigLoopGuard, type VeredictoLoop } from '../loop-guard.ts';
-import { executarComEscada, escolherModelo, type ConfigModelos, type Escolha } from './escada.ts';
+import { executarComEscada, escolherModelo, type ConfigModelos, type Degrau, type Escolha } from './escada.ts';
 import { ROTEIROS } from './modelos.ts';
 import { validarPlano, type PlanoValidado } from './plano.ts';
 import type { UsoAnthropic } from './precos.ts';
@@ -37,6 +37,28 @@ export interface OpcoesFerramentas {
    * escaneia/neutraliza cada resultado. Sem ele o laço se comporta como antes.
    */
   taint?: RastroTaint;
+  /**
+   * Skills (item 793): escopo de ferramentas por rodada. Só REDUZ o que a conversa já tinha; sem ele, tudo como antes.
+   */
+  escopo?: EscopoFerramentas;
+}
+
+/** Escopo dinâmico das ferramentas (skill ativa). Implementado por `SessaoSkills`. */
+export interface EscopoFerramentas {
+  /** Ferramentas oferecidas ao modelo NESTA rodada (undefined = as passadas à chamada). */
+  ferramentas(): FerramentaIa[] | undefined;
+  /** Recusa (texto para o modelo) se a tool não pode executar agora; null se pode. */
+  recusar(nome: string): string | null;
+  /** Tool que carrega o escopo (`usar_skill`): na mesma rodada, as demais chamadas esperam a rodada seguinte. */
+  carrega?(nome: string): boolean;
+  /** Degrau mínimo pedido pela skill ativa (a escada ainda barra Opus sem `permitir_opus`). */
+  degrau?(): Degrau | undefined;
+}
+
+/** O que muda a cada rodada do laço (skills): ferramentas e degrau. */
+export interface AjusteRodada {
+  ferramentas?: FerramentaIa[];
+  degrau?: Degrau;
 }
 
 /** Texto devolvido quando o LoopGuard interrompe o laço de ferramentas. */
@@ -50,7 +72,7 @@ type MensagemIa = { role: 'user' | 'assistant'; content: string | Bloco[] };
 
 /** Laço de tool use, separado do HTTP para dar para testar. `chamarIa` recebe o tempo que sobra. */
 export async function lacoFerramentas(
-  chamarIa: (mensagens: MensagemIa[], timeoutMs: number, comFerramentas: boolean) => Promise<{ content: Bloco[]; stop_reason?: string }>,
+  chamarIa: (mensagens: MensagemIa[], timeoutMs: number, comFerramentas: boolean, ajuste?: AjusteRodada) => Promise<{ content: Bloco[]; stop_reason?: string }>,
   pergunta: string,
   executar: ExecutarFerramenta,
   o: OpcoesFerramentas = {},
@@ -72,20 +94,30 @@ export async function lacoFerramentas(
     const sobra = fim - agora();
     if (sobra < 1500) return 'Demorei demais para juntar tudo. Pergunte de um jeito mais curto ou peça uma parte por vez.';
     // última rodada: sem ferramentas, a IA tem de responder com o que já juntou
-    const r = await chamarIa(mensagens, sobra, i < rodadas);
+    const ajuste: AjusteRodada | undefined = o.escopo ? { ferramentas: o.escopo.ferramentas(), degrau: o.escopo.degrau?.() } : undefined;
+    const r = await chamarIa(mensagens, sobra, i < rodadas, ajuste);
     const usos = r.content.filter((b): b is Extract<Bloco, { type: 'tool_use' }> => b.type === 'tool_use');
     const texto = r.content.filter((b): b is Extract<Bloco, { type: 'text' }> => b.type === 'text').map((b) => b.text).join('\n').trim();
     if (!usos.length || r.stop_reason !== 'tool_use') return texto;
     mensagens.push({ role: 'assistant', content: r.content });
     const resultados: Bloco[] = [];
+    // item 793 (skills): fora do escopo da skill ativa não executa e nem chega ao taint (não gera pedido de aprovação à toa)
+    const carregaNaRodada = !!o.escopo?.carrega && usos.some((u) => o.escopo!.carrega!(u.name));
+    const recusas = usos.map((u) => {
+      if (!o.escopo) return null;
+      if (carregaNaRodada && !o.escopo.carrega!(u.name)) return `Não executei "${u.name}" agora: a skill acabou de ser carregada. Chame de novo na próxima rodada, só com as ferramentas que ela libera.`;
+      return o.escopo.recusar(u.name);
+    });
     // item 815: todas as decisões desta rodada saem ANTES de qualquer resultado dela (o modelo decidiu sem vê-los)
-    const vereditos = o.taint ? await Promise.all(usos.map((u) => o.taint!.avaliar(u.name, u.input ?? {}))) : [];
+    const vereditos = o.taint ? await Promise.all(usos.map((u, k) => (recusas[k] ? Promise.resolve(null) : o.taint!.avaliar(u.name, u.input ?? {})))) : [];
     for (const [i, u] of usos.entries()) {
       const negado = guarda.antes(u.name, u.input ?? {});
       if (negado) return interromper(negado);
       const veredito = vereditos[i];
       let saida: string;
-      if (veredito && veredito.acao !== 'executar') {
+      if (recusas[i]) {
+        saida = recusas[i]!;
+      } else if (veredito && veredito.acao !== 'executar') {
         saida = veredito.resposta;
       } else {
         const resto = Math.max(500, fim - agora() - 1500);
@@ -237,18 +269,23 @@ export function criarCerebroAnthropic(o: OpcoesCerebroAnthropic): Cerebro {
     async pensarComFerramentas(sistemaBruto, pergunta, ferramentas, executar, op) {
       const sistema = comRegraDadoExterno(sistemaBruto);
       return lacoFerramentas(
-        (mensagens, timeoutMs, comFerramentas) =>
-          chamarEscalonado<RespostaIa>(o, {
+        (mensagens, timeoutMs, comFerramentas, ajuste) => {
+          const tools = ajuste?.ferramentas ?? ferramentas;
+          // item 793 (skills): degrau mínimo da skill ativa; override explícito do chamador (contexto.modelo) vence
+          const modeloDaSkill = ajuste?.degrau && o.escada ? o.escada.degraus[ajuste.degrau] : undefined;
+          const contexto = modeloDaSkill && !op?.contexto?.modelo ? { ...op?.contexto, modelo: modeloDaSkill } : op?.contexto;
+          return chamarEscalonado<RespostaIa>(o, {
             finalidadePadrao: 'conversa',
             sistema,
             mensagens,
-            nTools: comFerramentas ? ferramentas.length : 0,
+            nTools: comFerramentas ? tools.length : 0,
             modeloPadrao: 'claude-haiku-5-5',
-            corpo: { max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
+            corpo: { max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && tools.length ? { tools } : {}) },
             timeoutMs,
-            contexto: op?.contexto,
+            contexto,
             valida: respostaUtil,
-          }),
+          });
+        },
         pergunta,
         executar,
         { ...op, loopGuard: op?.loopGuard ?? o.loopGuard, aoLoop: op?.aoLoop ?? o.aoLoop },

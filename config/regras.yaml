@@ -18,6 +18,8 @@ semaforo:
     - ler_metricas_campanha
     - pausar_campanha
     - cotar_fretes
+    # item 793 (skills): tool interna que só carrega texto de skill e RESTRINGE as ferramentas da conversa
+    - usar_skill
     # item 793: tools de servidores MCP externos (mcp_<servidor>_<tool>), só leitura
     - mcp_openjarvis_calculator
     - mcp_openjarvis_think
