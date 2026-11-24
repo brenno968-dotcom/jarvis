@@ -1,8 +1,11 @@
 // "Cérebro" do Maestro: transforma o comando do Breno num plano (seção 24, Maestro).
 // A IA só PROPÕE: o plano passa pela validação (seção 11) e pela aprovação do Breno.
 import { ErroHttp, requisitarJson } from '../http.ts';
+import { log } from '../log.ts';
 import type { FerramentaIa } from '../nexus-mcp.ts';
 import type { Regras } from '../regras.ts';
+import { LoopGuard, loopGuardPadrao, type ConfigLoopGuard, type VeredictoLoop } from '../loop-guard.ts';
+import { executarComEscada, escolherModelo, type ConfigModelos, type Escolha } from './escada.ts';
 import { ROTEIROS } from './modelos.ts';
 import { validarPlano, type PlanoValidado } from './plano.ts';
 import type { UsoAnthropic } from './precos.ts';
@@ -24,7 +27,15 @@ export interface OpcoesFerramentas {
   agora?: () => number;
   /** Telemetria (item 791): tarefa/empresa/negócio/finalidade desta conversa. */
   contexto?: ContextoLlm;
+  /** LoopGuard (item 792): limites; padrão = `loopGuardPadrao()`. Complementa o bloqueio de args idênticos da ponte MCP. */
+  loopGuard?: ConfigLoopGuard;
+  /** Chamado quando o LoopGuard interrompe (ex.: registrar na auditoria). Falha aqui nunca derruba a conversa. */
+  aoLoop?: (v: VeredictoLoop) => void | Promise<void>;
 }
+
+/** Texto devolvido quando o LoopGuard interrompe o laço de ferramentas. */
+export const mensagemLoop = (v: VeredictoLoop) =>
+  `Parei para não entrar em loop: ${v.motivo}. Tente de outro jeito ou peça uma parte por vez.`;
 /** Prazo padrão da conversa com ferramentas: abaixo dos 22 s combinados (o Nexus corta em 25 s). */
 export const PRAZO_CONVERSA_MS = 20_000;
 
@@ -42,6 +53,15 @@ export async function lacoFerramentas(
   const fim = agora() + (o.prazoMs ?? PRAZO_CONVERSA_MS);
   const rodadas = o.rodadas ?? 5;
   const mensagens: MensagemIa[] = [{ role: 'user', content: pergunta }];
+  const guarda = new LoopGuard(o.loopGuard ?? loopGuardPadrao());
+  const interromper = async (v: VeredictoLoop): Promise<string> => {
+    try {
+      await o.aoLoop?.(v);
+    } catch {
+      /* auditoria não derruba a conversa */
+    }
+    return mensagemLoop(v);
+  };
   for (let i = 0; i <= rodadas; i++) {
     const sobra = fim - agora();
     if (sobra < 1500) return 'Demorei demais para juntar tudo. Pergunte de um jeito mais curto ou peça uma parte por vez.';
@@ -53,9 +73,15 @@ export async function lacoFerramentas(
     mensagens.push({ role: 'assistant', content: r.content });
     const resultados: Bloco[] = [];
     for (const u of usos) {
+      const negado = guarda.antes(u.name, u.input ?? {});
+      if (negado) return interromper(negado);
       const resto = Math.max(500, fim - agora() - 1500);
-      resultados.push({ type: 'tool_result', tool_use_id: u.id, content: await executar(u.name, u.input ?? {}, Math.min(10_000, resto)) });
+      const saida = await executar(u.name, u.input ?? {}, Math.min(10_000, resto));
+      guarda.depois(u.name, saida);
+      resultados.push({ type: 'tool_result', tool_use_id: u.id, content: saida });
     }
+    const parado = guarda.fecharRodada();
+    if (parado) return interromper(parado);
     mensagens.push({ role: 'user', content: resultados });
   }
   return 'Não consegui fechar a resposta a tempo.';
@@ -71,6 +97,17 @@ export interface OpcoesCerebroAnthropic {
   contexto?: ContextoLlm;
   /** Relógio em ms (testes). */
   agora?: () => number;
+  /**
+   * Escada de modelos + fallback (item 792; `regras.modelos`). Sem ela o comportamento é o antigo: um modelo fixo
+   * (`modelo` ou o padrão da chamada), sem repetição nem troca. Com ela, `modelo` vira override explícito.
+   */
+  escada?: ConfigModelos;
+  /** LoopGuard padrão das conversas com ferramentas (item 792; `regras.loop_guard`). */
+  loopGuard?: ConfigLoopGuard;
+  /** Auditoria do LoopGuard (conversa). */
+  aoLoop?: (v: VeredictoLoop) => void | Promise<void>;
+  /** Espera do backoff (testes). */
+  dormir?: (ms: number) => Promise<void>;
 }
 
 const URL_MENSAGENS = 'https://api.anthropic.com/v1/messages';
@@ -86,6 +123,7 @@ async function chamarMensagens<T extends { usage?: UsoAnthropic; stop_reason?: s
   timeoutMs: number,
   finalidadePadrao: string,
   contexto?: ContextoLlm,
+  fallbackDe: string | null = null,
 ): Promise<T> {
   const agora = o.agora ?? Date.now;
   const ini = agora();
@@ -99,7 +137,7 @@ async function chamarMensagens<T extends { usage?: UsoAnthropic; stop_reason?: s
       timeoutMs,
     });
     void registrarChamada(o.gravador, () =>
-      montarChamada({ modelo, contexto: ctx, finalidadePadrao, uso: r?.usage, latenciaMs: agora() - ini, statusHttp: 200, stopReason: r?.stop_reason }),
+      montarChamada({ modelo, contexto: ctx, finalidadePadrao, uso: r?.usage, latenciaMs: agora() - ini, statusHttp: 200, stopReason: r?.stop_reason, fallbackDe }),
     );
     return r;
   } catch (e) {
@@ -109,6 +147,7 @@ async function chamarMensagens<T extends { usage?: UsoAnthropic; stop_reason?: s
         contexto: ctx,
         finalidadePadrao,
         latenciaMs: agora() - ini,
+        fallbackDe,
         statusHttp: e instanceof ErroHttp ? e.status : null,
         erro: e instanceof ErroHttp ? `${e.erro.codigo}: ${e.erro.mensagem}` : String((e as Error)?.message ?? e),
       }),
@@ -117,33 +156,85 @@ async function chamarMensagens<T extends { usage?: UsoAnthropic; stop_reason?: s
   }
 }
 
+interface PedidoEscalonado<T> {
+  finalidadePadrao: string;
+  sistema: string;
+  mensagens: unknown;
+  nTools: number;
+  /** Modelo quando não há escada (comportamento antigo). */
+  modeloPadrao: string;
+  corpo: Record<string, unknown>;
+  timeoutMs: number;
+  contexto?: ContextoLlm;
+  valida: (r: T) => boolean;
+}
+
+/** Uma chamada ao modelo: com escada (seleção + fallback) ou, sem ela, direta no modelo fixo. */
+async function chamarEscalonado<T extends { usage?: UsoAnthropic; stop_reason?: string }>(o: OpcoesCerebroAnthropic, p: PedidoEscalonado<T>): Promise<T> {
+  const ctx = { ...o.contexto, ...p.contexto };
+  const finalidade = ctx.finalidade ?? p.finalidadePadrao;
+  if (!o.escada) {
+    return chamarMensagens<T>(o, o.modelo ?? p.modeloPadrao, p.corpo, p.timeoutMs, p.finalidadePadrao, p.contexto);
+  }
+  const escolha: Escolha = escolherModelo(o.escada, {
+    finalidade,
+    texto: `${p.sistema}\n${JSON.stringify(p.mensagens)}`,
+    nTools: p.nTools,
+    modelo: ctx.modelo ?? o.modelo,
+  });
+  const r = await executarComEscada<T>(
+    o.escada,
+    escolha,
+    (t) => chamarMensagens<T>(o, t.modelo, p.corpo, t.timeoutMs, p.finalidadePadrao, p.contexto, t.fallbackDe),
+    {
+      valida: p.valida,
+      timeoutMs: p.timeoutMs,
+      agora: o.agora,
+      dormir: o.dormir,
+      aoTrocar: (t) => log('aviso', 'fallback de modelo', { de: t.de, para: t.para, motivo: t.motivo, finalidade }),
+    },
+  );
+  return r.resposta;
+}
+
+type RespostaIa = { content: Bloco[]; stop_reason?: string; usage?: UsoAnthropic };
+const textoDe = (r: { content?: { type: string; text?: string }[] }) => (r.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
+/** Resposta que serve: tem texto ou pede uma ferramenta. Vazia/sem conteúdo faz o fallback subir de degrau. */
+const respostaUtil = (r: RespostaIa) => (r.content ?? []).some((b) => (b.type === 'text' && b.text.trim() !== '') || b.type === 'tool_use');
+
 export function criarCerebroAnthropic(o: OpcoesCerebroAnthropic): Cerebro {
   return {
     async pensar(sistema, mensagens, contexto) {
-      const r = await chamarMensagens<{ content: { type: string; text?: string }[]; usage?: UsoAnthropic; stop_reason?: string }>(
-        o,
-        o.modelo ?? 'claude-sonnet-5-5',
-        { max_tokens: 8000, system: sistema, messages: mensagens },
-        120_000,
-        'plano',
+      const r = await chamarEscalonado<{ content: { type: string; text?: string }[]; usage?: UsoAnthropic; stop_reason?: string }>(o, {
+        finalidadePadrao: 'plano',
+        sistema,
+        mensagens,
+        nTools: 0,
+        modeloPadrao: 'claude-sonnet-5-5',
+        corpo: { max_tokens: 8000, system: sistema, messages: mensagens },
+        timeoutMs: 120_000,
         contexto,
-      );
-      return r.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
+        valida: (x) => textoDe(x).trim() !== '',
+      });
+      return textoDe(r);
     },
     async pensarComFerramentas(sistema, pergunta, ferramentas, executar, op) {
       return lacoFerramentas(
         (mensagens, timeoutMs, comFerramentas) =>
-          chamarMensagens<{ content: Bloco[]; stop_reason?: string; usage?: UsoAnthropic }>(
-            o,
-            o.modelo ?? 'claude-haiku-5-5',
-            { max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
+          chamarEscalonado<RespostaIa>(o, {
+            finalidadePadrao: 'conversa',
+            sistema,
+            mensagens,
+            nTools: comFerramentas ? ferramentas.length : 0,
+            modeloPadrao: 'claude-haiku-5-5',
+            corpo: { max_tokens: 1200, system: sistema, messages: mensagens, ...(comFerramentas && ferramentas.length ? { tools: ferramentas } : {}) },
             timeoutMs,
-            'conversa',
-            op?.contexto,
-          ),
+            contexto: op?.contexto,
+            valida: respostaUtil,
+          }),
         pergunta,
         executar,
-        op,
+        { ...op, loopGuard: op?.loopGuard ?? o.loopGuard, aoLoop: op?.aoLoop ?? o.aoLoop },
       );
     },
   };

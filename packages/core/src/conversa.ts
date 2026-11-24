@@ -97,6 +97,10 @@ export async function responderConversa(
             usadas.push(nome);
             if (nome.startsWith('mcp__')) return mcpExterno ? mcpExterno.executar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
             return nexus ? nexus.chamar(nome, args, ms) : `Ferramenta "${nome}" não é permitida.`;
+          }, {
+            // item 792: LoopGuard interrompe ciclo/excesso/sem progresso e registra na auditoria
+            loopGuard: regras.loop_guard,
+            aoLoop: (v) => registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'loop_guard', detalhes: { padrao: v.padrao, tool: v.tool ?? null, motivo: v.motivo } }),
           })
         ).trim();
         await registrarAuditoria(banco, { quem: 'whatsapp:numero', acao: 'conversa_ferramentas_nexus', detalhes: { ferramentas: usadas } });

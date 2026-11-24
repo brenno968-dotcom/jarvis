@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { esquemaLoopGuard } from './loop-guard.ts';
+import { esquemaModelos } from './maestro/escada.ts';
 import type { NivelSemaforo } from './tipos.ts';
 
 const nomeAcao = z.string().regex(/^[a-z0-9_]+$/, 'ação deve ser minúscula com _');
@@ -41,6 +43,9 @@ export const esquemaRegras = z
       multiplicador: z.number().min(1),
       espera_maxima_segundos: z.number().positive(),
     }),
+    // item 792: escada de modelos + fallback e LoopGuard (opcionais: sem a seção valem os padrões do código)
+    modelos: esquemaModelos.default({}),
+    loop_guard: esquemaLoopGuard.default({}),
     emergencia: z.object({
       comando_whatsapp: z.string().min(1),
       revogar_tokens: z.array(z.string()),

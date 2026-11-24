@@ -9,6 +9,8 @@ import { calcularCusto, tokensDoUso, type UsoAnthropic } from './precos.ts';
 export interface ContextoLlm {
   /** Para que serve a chamada: 'plano', 'conversa', 'oferta'... (coluna `finalidade`). */
   finalidade?: string;
+  /** Override explícito do modelo desta chamada (vale sobre o mapa por finalidade e a heurística; item 792). */
+  modelo?: string;
   tarefaId?: string;
   empresaId?: string;
   negocioId?: string;
@@ -31,6 +33,8 @@ export interface ChamadaLlm {
   statusHttp: number | null;
   erro: string | null;
   stopReason: string | null;
+  /** Modelo de onde a chamada caiu (fallback, item 792); nulo = chamada normal. */
+  fallbackDe?: string | null;
 }
 
 export interface GravadorLlm {
@@ -44,29 +48,42 @@ const uuidOuNulo = (v: string | undefined): string | null => (v && UUID.test(v) 
 export function criarGravadorBanco(banco: Pick<Banco, 'query'>): GravadorLlm {
   return {
     async gravar(c) {
-      await banco.query(
-        `insert into llm_chamadas
-           (empresa_id, negocio_id, tarefa_id, modelo, finalidade, tokens_entrada, tokens_saida, tokens_cache_leitura,
-            tokens_cache_escrita, custo_usd, custo_brl, latencia_ms, status_http, erro, stop_reason)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [
-          uuidOuNulo(c.empresaId),
-          uuidOuNulo(c.negocioId),
-          uuidOuNulo(c.tarefaId),
-          c.modelo,
-          c.finalidade,
-          c.tokensEntrada,
-          c.tokensSaida,
-          c.tokensCacheLeitura,
-          c.tokensCacheEscrita,
-          c.custoUsd,
-          c.custoBrl,
-          c.latenciaMs,
-          c.statusHttp,
-          c.erro,
-          c.stopReason,
-        ],
-      );
+      const base = [
+        uuidOuNulo(c.empresaId),
+        uuidOuNulo(c.negocioId),
+        uuidOuNulo(c.tarefaId),
+        c.modelo,
+        c.finalidade,
+        c.tokensEntrada,
+        c.tokensSaida,
+        c.tokensCacheLeitura,
+        c.tokensCacheEscrita,
+        c.custoUsd,
+        c.custoBrl,
+        c.latenciaMs,
+        c.statusHttp,
+        c.erro,
+        c.stopReason,
+      ];
+      try {
+        await banco.query(
+          `insert into llm_chamadas
+             (empresa_id, negocio_id, tarefa_id, modelo, finalidade, tokens_entrada, tokens_saida, tokens_cache_leitura,
+              tokens_cache_escrita, custo_usd, custo_brl, latencia_ms, status_http, erro, stop_reason, fallback_de)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [...base, c.fallbackDe ?? null],
+        );
+      } catch (e) {
+        // 42703 = coluna inexistente: a migration 0014 ainda não foi aplicada. Grava sem `fallback_de`.
+        if ((e as { code?: string })?.code !== '42703') throw e;
+        await banco.query(
+          `insert into llm_chamadas
+             (empresa_id, negocio_id, tarefa_id, modelo, finalidade, tokens_entrada, tokens_saida, tokens_cache_leitura,
+              tokens_cache_escrita, custo_usd, custo_brl, latencia_ms, status_http, erro, stop_reason)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          base,
+        );
+      }
     },
   };
 }
@@ -80,6 +97,7 @@ export interface DadosChamada {
   statusHttp: number | null;
   erro?: string | null;
   stopReason?: string | null;
+  fallbackDe?: string | null;
 }
 
 /** Monta a linha (com custo) a partir do que a chamada devolveu. */
@@ -102,6 +120,7 @@ export function montarChamada(d: DadosChamada, env: Record<string, string | unde
     statusHttp: d.statusHttp,
     erro: d.erro ? redator.redigir(d.erro).slice(0, 300) : null,
     stopReason: d.stopReason ?? null,
+    fallbackDe: d.fallbackDe ?? null,
   };
 }
 
