@@ -42,6 +42,7 @@
 - Worker no VPS conferido em 15/11 02h50: `vps-hostinger-1` ativo, sinal em dia. Migração 0009 já está no GitHub.
 - Falta da Fase 0 real: Gmail OAuth, chave da IA do Jarvis, conta de máquina `jarvis-core` no Bitwarden (precisam do login do Breno).
 > **Item 790 (memória semântica):** migration `0011_memoria.sql` (pgvector, `memoria_trechos`, função `memoria_buscar` com RRF), `packages/core/src/memoria/` (chunker, embeddings Voyage, `lembrar`/`recordar`) e ferramentas MCP `jarvis_memoria_buscar`/`jarvis_memoria_gravar`. Env `VOYAGE_API_KEY` (opcional: sem ela só busca por palavras). Pendente: aplicar a migration em produção e configurar a chave; o CI passou a usar a imagem `pgvector/pgvector:pg16`.
+> **Item 791 (telemetria de LLM):** migration `0012_llm_chamadas.sql` (tabela `llm_chamadas` + view `llm_custos_diarios`), `packages/core/src/maestro/precos.ts` e `telemetria.ts`, medição em `cerebro.ts` (tokens, custo, latência, erro; gravação não bloqueante) e tool MCP `jarvis_custos`. Envs `JARVIS_CORE_USD_BRL` (padrão 5.5) e `JARVIS_CORE_PRECOS_LLM`. Pendente: aplicar a migration em produção.
 
 ## 000. Atualização de 10/11/2026 (quarta sessão): programação concluída
 

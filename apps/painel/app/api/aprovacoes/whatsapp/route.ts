@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   criarCerebroAnthropic,
+  criarGravadorBanco,
   criarClienteNexusMcp,
   urlDoMcp,
   destinoDosAvisos,
@@ -60,7 +61,7 @@ function depsDoPainel(numerosAutorizados: string[]): DepsEventoNexus {
   const destino = destinoDosAvisos(numerosAutorizados);
   const urlMcp = urlDoMcp({ JARVIS_CORE_NEXUS_MCP_URL: process.env.JARVIS_CORE_NEXUS_MCP_URL, JARVIS_CORE_NEXUS_AVISOS_URL: url });
   return {
-    cerebro: chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA ?? 'claude-haiku-5-5' }) : null,
+    cerebro: chave ? criarCerebroAnthropic({ chave, modelo: process.env.JARVIS_MODELO_IA_CONVERSA ?? 'claude-haiku-5-5', gravador: criarGravadorBanco(obterBanco()) }) : null,
     // item 416 (parte 2): a conversa usa as ferramentas do Nexus, assinando com o mesmo segredo dos avisos
     nexus: urlMcp && segredo ? criarClienteNexusMcp({ url: urlMcp, segredo }) : null,
     avisarAgora:
