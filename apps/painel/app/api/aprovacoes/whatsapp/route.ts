@@ -4,6 +4,8 @@ import {
   criarClienteNexusMcp,
   urlDoMcp,
   destinoDosAvisos,
+  enviarDecisoesPendentesAoNexus,
+  log,
   marcarWebhookVisto,
   notificadorNexus,
   processarEventoNexus,
@@ -43,6 +45,10 @@ export async function POST(req: NextRequest) {
   }
   const regras = obterRegras();
   const resultado = await processarEventoNexus(banco, regras, evento, depsDoPainel(regras.aprovacao.numeros_autorizados));
+  // Pedido que nasceu no Nexus (ex.: xavier_lancamento): devolve a decisão assinada; falha fica para o reenvio do worker.
+  if (resultado.tipo === 'aprovacao') {
+    await enviarDecisoesPendentesAoNexus(banco).catch((e) => log('erro', 'envio da decisão ao Nexus falhou', { erro: String(e) }));
+  }
   return NextResponse.json({ ok: true, resultado });
 }
 
