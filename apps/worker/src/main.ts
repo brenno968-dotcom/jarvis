@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import {
+  auditoriaDeInjecao,
   carregarConfigMcp,
   carregarRegras,
   criarBanco,
@@ -80,7 +81,7 @@ async function principal(): Promise<void> {
   const gId = await opcional('JARVIS_CORE_GMAIL_CLIENT_ID');
   const gSec = await opcional('JARVIS_CORE_GMAIL_CLIENT_SECRET');
   const gRef = await opcional('JARVIS_CORE_GMAIL_REFRESH_TOKEN');
-  if (gId && gSec && gRef) gmail = criarClienteGmail({ clientId: gId, clientSecret: gSec, refreshToken: gRef });
+  if (gId && gSec && gRef) gmail = criarClienteGmail({ clientId: gId, clientSecret: gSec, refreshToken: gRef, aoDetectarInjecao: auditoriaDeInjecao(banco, 'gmail') });
   const topicoGmail = process.env.JARVIS_GMAIL_TOPICO_PUBSUB;
 
   // Plataformas sem API: uma por receita aprovada pelo Vigia, com navegador na nuvem.

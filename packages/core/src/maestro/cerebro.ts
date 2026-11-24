@@ -4,6 +4,7 @@ import { ErroHttp, requisitarJson } from '../http.ts';
 import { log } from '../log.ts';
 import type { FerramentaIa } from '../nexus-mcp.ts';
 import type { Regras } from '../regras.ts';
+import { comRegraDadoExterno, REGRA_DADO_EXTERNO, type RastroTaint } from '../seguranca/taint.ts';
 import { LoopGuard, loopGuardPadrao, type ConfigLoopGuard, type VeredictoLoop } from '../loop-guard.ts';
 import { executarComEscada, escolherModelo, type ConfigModelos, type Escolha } from './escada.ts';
 import { ROTEIROS } from './modelos.ts';
@@ -31,6 +32,11 @@ export interface OpcoesFerramentas {
   loopGuard?: ConfigLoopGuard;
   /** Chamado quando o LoopGuard interrompe (ex.: registrar na auditoria). Falha aqui nunca derruba a conversa. */
   aoLoop?: (v: VeredictoLoop) => void | Promise<void>;
+  /**
+   * Taint anti-injeção (item 815): decide, a cada tool_use, se a tool pode executar dado o que já entrou no contexto e
+   * escaneia/neutraliza cada resultado. Sem ele o laço se comporta como antes.
+   */
+  taint?: RastroTaint;
 }
 
 /** Texto devolvido quando o LoopGuard interrompe o laço de ferramentas. */
@@ -72,11 +78,20 @@ export async function lacoFerramentas(
     if (!usos.length || r.stop_reason !== 'tool_use') return texto;
     mensagens.push({ role: 'assistant', content: r.content });
     const resultados: Bloco[] = [];
-    for (const u of usos) {
+    // item 815: todas as decisões desta rodada saem ANTES de qualquer resultado dela (o modelo decidiu sem vê-los)
+    const vereditos = o.taint ? await Promise.all(usos.map((u) => o.taint!.avaliar(u.name, u.input ?? {}))) : [];
+    for (const [i, u] of usos.entries()) {
       const negado = guarda.antes(u.name, u.input ?? {});
       if (negado) return interromper(negado);
-      const resto = Math.max(500, fim - agora() - 1500);
-      const saida = await executar(u.name, u.input ?? {}, Math.min(10_000, resto));
+      const veredito = vereditos[i];
+      let saida: string;
+      if (veredito && veredito.acao !== 'executar') {
+        saida = veredito.resposta;
+      } else {
+        const resto = Math.max(500, fim - agora() - 1500);
+        saida = await executar(u.name, u.input ?? {}, Math.min(10_000, resto));
+        if (o.taint) saida = await o.taint.registrarResultado(u.name, saida);
+      }
       guarda.depois(u.name, saida);
       resultados.push({ type: 'tool_result', tool_use_id: u.id, content: saida });
     }
@@ -204,7 +219,8 @@ const respostaUtil = (r: RespostaIa) => (r.content ?? []).some((b) => (b.type ==
 
 export function criarCerebroAnthropic(o: OpcoesCerebroAnthropic): Cerebro {
   return {
-    async pensar(sistema, mensagens, contexto) {
+    async pensar(sistemaBruto, mensagens, contexto) {
+      const sistema = comRegraDadoExterno(sistemaBruto);
       const r = await chamarEscalonado<{ content: { type: string; text?: string }[]; usage?: UsoAnthropic; stop_reason?: string }>(o, {
         finalidadePadrao: 'plano',
         sistema,
@@ -218,7 +234,8 @@ export function criarCerebroAnthropic(o: OpcoesCerebroAnthropic): Cerebro {
       });
       return textoDe(r);
     },
-    async pensarComFerramentas(sistema, pergunta, ferramentas, executar, op) {
+    async pensarComFerramentas(sistemaBruto, pergunta, ferramentas, executar, op) {
+      const sistema = comRegraDadoExterno(sistemaBruto);
       return lacoFerramentas(
         (mensagens, timeoutMs, comFerramentas) =>
           chamarEscalonado<RespostaIa>(o, {
@@ -251,6 +268,7 @@ export function instrucoesMaestro(regras: Regras): string {
     `Teto mensal de anúncios padrão: R$ ${regras.orcamento_padrao.teto_mensal_por_negocio_brl}; teto por compra: R$ ${regras.orcamento_padrao.teto_por_compra_brl}.`,
     'Use as etapas do roteiro do modelo como ponto de partida (pode ajustar). agente ∈ maestro|jarvis_infra|oferta|trafego|vendas|fornecedores|logistica|fiscal.',
     'Ações e ids em minúsculas_com_underline. Parâmetros nunca contêm senha/token: só nomes de segredos.',
+    REGRA_DADO_EXTERNO,
     `Roteiros: ${JSON.stringify(Object.values(ROTEIROS).map((r) => ({ modelo: r.modelo, descricao: r.descricao, etapas: r.etapas, riscos: r.riscos_tipicos })))}`,
     'Responda SOMENTE com o JSON, no formato:',
     '{"modelo_negocio":"...","objetivo":"...","justificativa_modelo":"...","orcamento":{"teto_total_brl":0,"teto_mensal_anuncios_brl":0,"teto_por_compra_brl":0},',
