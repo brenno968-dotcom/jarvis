@@ -1,5 +1,5 @@
 // Conector MCP do Jarvis (proposto na seção 29): o Claude manda pedidos pela conversa.
-// Só leitura + criar tarefa. Nenhuma ferramenta devolve valor de segredo, aprova algo ou mexe na emergência:
+// Só leitura + criar tarefa + memória de longo prazo (buscar/gravar). Nenhuma ferramenta devolve valor de segredo, aprova algo ou mexe na emergência:
 // aprovar continua sendo do Breno (WhatsApp/painel), e o semáforo vale para tudo que o Claude pedir.
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -10,6 +10,8 @@ import { classificarAcao, type Regras } from './regras.ts';
 import { salvarPlano } from './maestro/orquestrador.ts';
 import { validarPlano } from './maestro/plano.ts';
 import { aplicarKitBase, kitDaEmpresa } from './kit.ts';
+import { lembrar, ORIGENS_MEMORIA, recordar } from './memoria/memoria.ts';
+import { redator } from './redacao.ts';
 
 export const VERSAO_PROTOCOLO_PADRAO = '2025-06-18';
 
@@ -70,6 +72,42 @@ export const FERRAMENTAS: Ferramenta[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'jarvis_memoria_buscar',
+    description:
+      'Busca na memória de longo prazo do Jarvis (busca híbrida: semântica + palavras). Devolve os trechos mais relevantes com origem, referência e score.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        consulta: { type: 'string' },
+        empresa_id: { type: 'string' },
+        negocio_id: { type: 'string' },
+        origem: { type: 'string', enum: [...ORIGENS_MEMORIA] },
+        limite: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+      required: ['consulta'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'jarvis_memoria_gravar',
+    description:
+      'Grava um texto na memória de longo prazo (dividido em trechos; o mesmo conteúdo não duplica). ' +
+      'NUNCA grave senha, token ou valor de segredo: use só o NOME do segredo da Dory.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string' },
+        origem: { type: 'string', enum: [...ORIGENS_MEMORIA] },
+        referencia: { type: 'string', description: 'Identificador de onde veio (id da tarefa, thread do Gmail, nome do documento...).' },
+        empresa_id: { type: 'string' },
+        negocio_id: { type: 'string' },
+        metadados: { type: 'object' },
+      },
+      required: ['texto', 'origem'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 const CHAVES_SUSPEITAS = /(senha|password|passwd|secret|token|api[_-]?key|valor)/i;
@@ -91,6 +129,25 @@ const argsCriar = z.object({
   resumo: z.string().max(500).optional(),
   empresa_id: z.string().uuid(),
   chave: z.string().max(200).optional(),
+});
+
+const origemMemoria = z.enum(ORIGENS_MEMORIA);
+
+const argsMemoriaBuscar = z.object({
+  consulta: z.string().min(1).max(2000),
+  empresa_id: z.string().uuid().optional(),
+  negocio_id: z.string().uuid().optional(),
+  origem: origemMemoria.optional(),
+  limite: z.number().int().min(1).max(50).default(10),
+});
+
+const argsMemoriaGravar = z.object({
+  texto: z.string().min(1).max(100_000),
+  origem: origemMemoria,
+  referencia: z.string().max(500).optional(),
+  empresa_id: z.string().uuid().optional(),
+  negocio_id: z.string().uuid().optional(),
+  metadados: z.record(z.unknown()).default({}),
 });
 
 async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<string, unknown>): Promise<unknown> {
@@ -164,6 +221,24 @@ async function chamar(banco: Banco, regras: Regras, nome: string, args: Record<s
         reaproveitado_do_kit: v.reaproveitado,
         observacao: 'Plano gravado. Pedido de aprovação enviado ao Breno.',
       };
+    }
+    case 'jarvis_memoria_buscar': {
+      const a = argsMemoriaBuscar.parse(args);
+      const trechos = await recordar(banco, a.consulta, { empresaId: a.empresa_id, negocioId: a.negocio_id, origem: a.origem }, a.limite);
+      return { total: trechos.length, trechos };
+    }
+    case 'jarvis_memoria_gravar': {
+      const a = argsMemoriaGravar.parse(args);
+      const suspeita = temChaveSuspeita(a.metadados);
+      if (suspeita) throw new Error(`metadado "${suspeita}" parece um segredo: use só o nome do segredo da Dory`);
+      return lembrar(banco, {
+        texto: redator.redigir(a.texto),
+        origem: a.origem,
+        referencia: a.referencia,
+        empresaId: a.empresa_id,
+        negocioId: a.negocio_id,
+        metadados: a.metadados,
+      });
     }
     default:
       throw new Error(`ferramenta desconhecida: ${nome}`);

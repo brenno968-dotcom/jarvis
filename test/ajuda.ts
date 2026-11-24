@@ -19,7 +19,9 @@ export async function bancoLimpo(): Promise<Banco> {
   await c.query('drop schema if exists public cascade; create schema public;');
   await c.query('grant usage on schema public to anon, authenticated;');
   const pasta = join(RAIZ, 'supabase/migrations');
-  for (const f of readdirSync(pasta).filter((x) => x.endsWith('.sql')).sort()) {
+  // A 0011 (memória semântica) exige pgvector; sem ele (Postgres local comum) ela é pulada e os testes dela também.
+  const comVector = (await c.query(`select 1 from pg_available_extensions where name = 'vector'`)).rowCount === 1;
+  for (const f of readdirSync(pasta).filter((x) => x.endsWith('.sql') && (comVector || !x.startsWith('0011_'))).sort()) {
     await c.query(readFileSync(join(pasta, f), 'utf8'));
   }
   // Para os testes rodarem como o Supabase: anon/authenticated recebem grants amplos
@@ -27,6 +29,17 @@ export async function bancoLimpo(): Promise<Banco> {
   await c.end();
   redator.limpar();
   return criarBanco(URL_TESTE);
+}
+
+/** O Postgres de teste tem pgvector? (decide se os testes da memória rodam contra o banco) */
+export async function temPgvector(): Promise<boolean> {
+  const c = new pg.Client({ connectionString: URL_TESTE });
+  await c.connect();
+  try {
+    return (await c.query(`select 1 from pg_available_extensions where name = 'vector'`)).rowCount === 1;
+  } finally {
+    await c.end();
+  }
 }
 
 export function regrasTeste(sobrescrever: (texto: string) => string = (t) => t): Regras {
